@@ -57,19 +57,25 @@ def merge_incorrect_splits_and_get_centroids(imp, centroid_distance_limit=100, s
 	rt_xs = rt.getColumn(rt.getColumnIndex("X")).tolist();
 	rt_ys = rt.getColumn(rt.getColumnIndex("Y")).tolist();
 	centroids = [(x, y) for x, y in zip(rt_xs, rt_ys)];
-	print("centroids = {}".format(centroids));
-	print("len(centroids) = {}".format(len(centroids)));
+#	print("centroids = {}".format(centroids));
+#	print("len(centroids) = {}".format(len(centroids)));
 	centroids_set = set();
 	for c in centroids:
 		ds = [math.sqrt((c[0] - cx)**2 + (c[1] - cy)**2) for (cx, cy) in centroids];
 		close_mask = [d < centroid_distance_limit for d in ds];
+#		print("C = {}".format(c));
+#		print("ds = {}".format(ds));
+#		print("close_mask = {}".format(close_mask));
+#		WaitForUserDialog("before add").show();
 		# if no other centroids are within centroid_distance_limit, add this centroid to the output set
 		# otherwise, add the average position of this centroid and those within centroid_distance_limit to the output set
-		centroids_set.add((sum([msk * c[0] for msk, b in zip(close_mask, centroids)])/sum(close_mask), 
+		centroids_set.add((sum([msk * b[0] for msk, b in zip(close_mask, centroids)])/sum(close_mask), 
 						sum([msk * b[1] for msk, b in zip(close_mask, centroids)])/sum(close_mask)));
-	
-	print("output_centroids =  {}".format(centroids_set));
-	print("len(output_centroids) = {}".format(len(output_centroids)));
+#		print("centroids_set = {}".format(centroids_set));
+#		WaitForUserDialog("after add").show();
+#	print("output_centroids =  {}".format(centroids_set));
+#	print("len(output_centroids) = {}".format(len(centroids_set)));
+	return list(output_centroids);
 	
 # select folders
 dc = DirectoryChooser("choose root folder containing data for analysis");
