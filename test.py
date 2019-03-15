@@ -5,7 +5,7 @@ from ij.plugin import HyperStackConverter, ZProjector, ChannelSplitter, Threshol
 from ij.plugin.frame import RoiManager
 from ij.measure import ResultsTable
 from ij.plugin.filter import ParticleAnalyzer, GaussianBlur
-from ij.gui import WaitForUserDialog
+from ij.gui import WaitForUserDialog, PointRoi, OvalRoi
 
 def keep_blobs_bigger_than(imp, min_size_pix=100):
 	"""remove all blobs other than the largest by area"""
@@ -20,7 +20,7 @@ def keep_blobs_bigger_than(imp, min_size_pix=100):
 	IJ.run(out_imp, "Select All", "");
 	IJ.run(out_imp, "Set...", "value=255 slice");
 	mxsz = imp.width * imp.height;
-	roim = RoiManager(False);
+	roim = RoiManager();
 	pa = ParticleAnalyzer(ParticleAnalyzer.ADD_TO_MANAGER, ParticleAnalyzer.AREA | ParticleAnalyzer.SLICE, rt, min_size_pix, mxsz);
 	pa.setRoiManager(roim);
 	roim.reset();
@@ -42,40 +42,55 @@ def merge_incorrect_splits_and_get_centroids(imp, centroid_distance_limit=100, s
 	"""if particles are found with centroids closer than centroid_distance_limit and both have size<size_limit, get average centroid"""
 	imp.killRoi();
 	rt = ResultsTable();
-#	out_imp = IJ.createImage("Size filtered {}".format(imp.getTitle()), imp.getWidth(), imp.getHeight(), 1, 8);
-#	out_imp.show();
-#	IJ.run(out_imp, "Select All", "");
-#	IJ.run(out_imp, "Set...", "value=255 slice");
+	out_imp = IJ.createImage("Nuclei centroids from {}".format(imp.getTitle()), imp.getWidth(), imp.getHeight(), 1, 8);
+	out_imp.show();
+	IJ.run(out_imp, "Select All", "");
+	IJ.run(out_imp, "Set...", "value=0 slice");
+	out_imp.show();
 	mxsz = imp.width * imp.height;
-	roim = RoiManager();
+	roim = RoiManager(False);
 	pa = ParticleAnalyzer(ParticleAnalyzer.ADD_TO_MANAGER, ParticleAnalyzer.AREA | ParticleAnalyzer.SLICE | ParticleAnalyzer.CENTROID, rt, 0, size_limit);
 	pa.setRoiManager(roim);
 	roim.reset();
 	rt.reset();
 	pa.analyze(imp);
-	rt.show("output");
+#	rt.show("output");
 	rt_xs = rt.getColumn(rt.getColumnIndex("X")).tolist();
 	rt_ys = rt.getColumn(rt.getColumnIndex("Y")).tolist();
 	centroids = [(x, y) for x, y in zip(rt_xs, rt_ys)];
-#	print("centroids = {}".format(centroids));
-#	print("len(centroids) = {}".format(len(centroids)));
 	centroids_set = set();
 	for c in centroids:
 		ds = [math.sqrt((c[0] - cx)**2 + (c[1] - cy)**2) for (cx, cy) in centroids];
 		close_mask = [d < centroid_distance_limit for d in ds];
-#		print("C = {}".format(c));
-#		print("ds = {}".format(ds));
-#		print("close_mask = {}".format(close_mask));
-#		WaitForUserDialog("before add").show();
 		# if no other centroids are within centroid_distance_limit, add this centroid to the output set
 		# otherwise, add the average position of this centroid and those within centroid_distance_limit to the output set
 		centroids_set.add((sum([msk * b[0] for msk, b in zip(close_mask, centroids)])/sum(close_mask), 
 						sum([msk * b[1] for msk, b in zip(close_mask, centroids)])/sum(close_mask)));
-#		print("centroids_set = {}".format(centroids_set));
-#		WaitForUserDialog("after add").show();
-#	print("output_centroids =  {}".format(centroids_set));
-#	print("len(output_centroids) = {}".format(len(centroids_set)));
-	return list(output_centroids);
+	roim.reset();
+	rt.reset();
+	pa = ParticleAnalyzer(ParticleAnalyzer.ADD_TO_MANAGER, ParticleAnalyzer.AREA | ParticleAnalyzer.SLICE | ParticleAnalyzer.CENTROID, rt, size_limit, mxsz);
+	pa.setRoiManager(roim);
+	pa.analyze(imp);
+	rt_xs = rt.getColumn(rt.getColumnIndex("X")).tolist();
+	rt_ys = rt.getColumn(rt.getColumnIndex("Y")).tolist();
+	centroids = [(x, y) for x, y in zip(rt_xs, rt_ys)];
+	for c in centroids:
+		centroids_set.add(c);
+	centroids = list(centroids_set);
+	print("new number of nuclei identified = {}".format(len(centroids)));
+#	print("centroids = {}".format(centroids));
+	roim.reset();
+	roim.close();
+	for c in centroids:
+#		print("c = ({}, {})".format(c[0], c[1]));
+		roi = OvalRoi(c[0], c[1], 1, 1);
+		out_imp.setRoi(roi);
+#		WaitForUserDialog("roi selected...").show();
+		IJ.run(out_imp, "Set...", "value=255 slice");
+	imp.changes = False;
+	imp.close();
+	out_imp.show();
+	return out_imp;
 	
 # select folders
 dc = DirectoryChooser("choose root folder containing data for analysis");
