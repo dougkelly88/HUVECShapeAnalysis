@@ -167,42 +167,6 @@ def generate_cell_rois(seg_binary_imp):
 	roim.reset();
 	roim.close();
 	return rois;
-
-def generate_stats(seg_binary_imp, intensity_channel_imp, cal, file_name):
-	"""generate output from segmentation image and paired image from which to take intensities"""
-	seg_binary_imp.killRoi();
-	rt = ResultsTable();
-	mxsz = seg_binary_imp.width * seg_binary_imp.height;
-	roim = RoiManager();
-	pa_options = ParticleAnalyzer.AREA | ParticleAnalyzer.PERIMETER | ParticleAnalyzer.SHAPE_DESCRIPTORS;
-	pa = ParticleAnalyzer(ParticleAnalyzer.ADD_TO_MANAGER, pa_options, rt, 1000, mxsz);
-	pa.setRoiManager(roim);
-	roim.reset();
-	rt.reset();
-	pa.analyze(seg_binary_imp);
-	rt_as = rt.getColumn(rt.getColumnIndex("Area")).tolist();
-	rt_ps = rt.getColumn(rt.getColumnIndex("Perim.")).tolist();
-	rt_ars = rt.getColumn(rt.getColumnIndex("AR")).tolist();
-	I_means = [];
-	I_sds = [];
-	rois = roim.getRoisAsArray();
-	for roi in rois:
-		intensity_channel_imp.setRoi(roi);
-		stats = intensity_channel_imp.getStatistics(Measurements.MEAN | Measurements.STD_DEV);
-		I_means.append(stats.mean);
-		I_sds.append(stats.stdDev);
-	roim.reset();
-	roim.close();
-	cell_shapes = [CellShapeResults(file_name=file_name,
-									cell_index=idx, 
-									cell_area_um2=(a * (cal.pixelWidth**2)),
-									cell_perimeter_um=(p * cal.pixelWidth),
-									cell_spikiness_index=None, 
-									cell_aspect_ratio=ar,
-									cell_gfp_I_mean=m,
-									cell_gfp_I_sd=sd, 
-									nuclei_in_cell=1) for idx, (a, p, ar, m, sd) in enumerate(zip(rt_as, rt_ps, rt_ars, I_means, I_sds))];
-	return cell_shapes, rois;
 	
 def generate_cell_shape_results(rois, intensity_channel_imp, cal, file_name):
 	"""from list of rois, generate results describing the cell enclosed in each roi"""
@@ -211,11 +175,10 @@ def generate_cell_shape_results(rois, intensity_channel_imp, cal, file_name):
 	for idx, roi in enumerate(rois):
 		intensity_channel_imp.setRoi(roi);
 		stats = roi.getStatistics();
-		#stats = intensity_channel_imp.getStatistics(Measurements.MEAN | Measurements.STD_DEV);
 		I_mean = stats.mean;
 		I_sd = stats.stdDev;
 		area = stats.area * (pixel_width**2);
-		perimeter = roi.getLength() * pixel_width;
+		perimeter = roi.getLength();
 		aspect_ratio = stats.major/stats.minor;
 		cell_shapes.append(CellShapeResults(file_name=file_name, 
 									  cell_index=idx, 
@@ -377,7 +340,6 @@ def gfp_analysis(imp, file_name):
 		IJ.run(threshold_imp, "Erode", "");
 	threshold_imp = keep_blobs_bigger_than(threshold_imp, min_size_pix=1000);
 	threshold_imp = my_kill_borders(threshold_imp);
-#	out_stats, rois = generate_stats(threshold_imp, gfp_imp, cal, os.path.splitext(file_name)[0]);
 	rois = generate_cell_rois(threshold_imp);
 	out_stats = generate_cell_shape_results(rois, gfp_imp, cal, file_name);
 	print("Number of cells identified = {}".format(len(out_stats)));
@@ -401,18 +363,6 @@ def manual_analysis(imp, file_name):
 	proceed = False;
 	roim = RoiManager();
 	roim.runCommand("Show all with labels");
-	#while not proceed:
-	#	dialog = GenericNonBlockingDialog("Perform manual segmentation");
-	#	dialog.addMessage("Perform manual segmentation...");
-	#	dialog.enableYesNoCancel("Add current ROI", "Proceed to next image");
-	#	dialog.showDialog();
-	#	if dialog.wasCanceled():
-	#		raise KeyboardInterrupt("Run canceled");
-	#	elif dialog.wasOKed():
-	#		proceed = True;
-	#	else:
-	#		roi = imp.getRoi();
-#	gfp_imp.show();
 	dialog = NonBlockingGenericDialog("Perform manual segmentation");
 	dialog.setOKLabel("Proceed to next image...")
 	dialog.addMessage("Perform manual segmentation: ");
@@ -435,8 +385,6 @@ def manual_analysis(imp, file_name):
 		imp.close();
 		save_output_csv(out_stats, output_folder);
 		return out_stats;
-#	gfp_imp.changes = False;
-#	gfp_imp.close();
 	return None;
 
 def main():
