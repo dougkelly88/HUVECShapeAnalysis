@@ -1,13 +1,27 @@
 import os, math
-from ij import IJ, ImagePlus
+from ij import IJ, ImagePlus, Prefs
 from ij import WindowManager as WM
 from ij.io import DirectoryChooser
 from ij.plugin import HyperStackConverter, ZProjector, ChannelSplitter, Thresholder
 from ij.plugin.frame import RoiManager
 from ij.measure import ResultsTable
 from ij.plugin.filter import ParticleAnalyzer, GaussianBlur
-from ij.gui import WaitForUserDialog, PointRoi, OvalRoi
+from ij.gui import WaitForUserDialog, PointRoi, OvalRoi, NonBlockingGenericDialog
 from ij.measure import Measurements
+
+def MyWaitForUser(title, message):
+	"""non-modal dialog with option to cancel the analysis"""
+	dialog = NonBlockingGenericDialog(title);
+	dialog.setCancelLabel("Cancel analysis");
+	if type(message) is list:
+		for line in message:
+			dialog.addMessage(line);
+	else:
+		dialog.addMessage(message);
+	dialog.showDialog();
+	if dialog.wasCanceled():
+		raise KeyboardInterrupt("Run canceled");
+	return;
 
 def import_iq3_metadata(metadata_path):
 	"""import basic image metadata based on the metadata saved by iQ3 software at acquisition time"""
@@ -45,7 +59,7 @@ def import_iq3_metadata(metadata_path):
 			ch_list = meta_dict['raw_channels_str'].split(",")
 			meta_dict['n_channels'] = len(ch_list);
 			meta_dict['channel_list'] = ch_list;
-		return meta_dict
+		return meta_dict;
 
 def keep_blobs_bigger_than(imp, min_size_pix=100):
 	"""remove all blobs other than the largest by area"""
@@ -58,7 +72,7 @@ def keep_blobs_bigger_than(imp, min_size_pix=100):
 	out_imp = IJ.createImage("{}{}".format(title_addition, imp.getTitle()), imp.getWidth(), imp.getHeight(), 1, 8);
 	out_imp.show();
 	IJ.run(out_imp, "Select All", "");
-	IJ.run(out_imp, "Set...", "value=255 slice");
+	IJ.run(out_imp, "Set...", "value=0 slice");
 	mxsz = imp.width * imp.height;
 	roim = RoiManager();
 	pa = ParticleAnalyzer(ParticleAnalyzer.ADD_TO_MANAGER, ParticleAnalyzer.AREA | ParticleAnalyzer.SLICE, rt, min_size_pix, mxsz);
@@ -70,7 +84,7 @@ def keep_blobs_bigger_than(imp, min_size_pix=100):
 	print("Number of nuclei identified: {}".format(len(rt_areas)));
 	for idx in range(len(rt_areas)):
 		roim.select(out_imp, idx);
-		IJ.run(out_imp, "Set...", "value=0 slice");
+		IJ.run(out_imp, "Set...", "value=255 slice");
 	mx_ind = rt_areas.index(max(rt_areas))
 	roim.reset();
 	roim.close();
@@ -115,7 +129,6 @@ def generate_cell_masks(watershed_seeds_imp, intensity_channel_imp):
 	binary_cells_imp = ImagePlus("thresholded", watershed_imp.createThresholdMask());
 	IJ.run(binary_cells_imp, "Kill Borders", "");
 	kb_thresh_title = binary_cells_imp.getTitle();
-	print(kb_thresh_title);
 	binary_cells_imp.close();
 	binary_cells_imp = WM.getImage("{}-killBorders".format(kb_thresh_title));
 	watershed_imp.close();
@@ -132,15 +145,19 @@ def merge_incorrect_splits_and_get_centroids(imp, centroid_distance_limit=100, s
 	out_imp.show();
 	cal = imp.getCalibration();
 	mxsz = imp.width * cal.pixelWidth * imp.height * cal.pixelHeight;
-	roim = RoiManager(False);
+	print("mxsz = {}".format(mxsz));
+	roim = RoiManager();
+	imp.show();
 	pa = ParticleAnalyzer(ParticleAnalyzer.ADD_TO_MANAGER, ParticleAnalyzer.AREA | ParticleAnalyzer.SLICE | ParticleAnalyzer.CENTROID, rt, 0, size_limit);
 	pa.setRoiManager(roim);
 	roim.reset();
 	rt.reset();
 	pa.analyze(imp);
+	MyWaitForUser("paise", "pause post-merge incorrect splits particel analysis");
 	rt_xs = rt.getColumn(rt.getColumnIndex("X")).tolist();
 	rt_ys = rt.getColumn(rt.getColumnIndex("Y")).tolist();
 	centroids = [(x, y) for x, y in zip(rt_xs, rt_ys)];
+	print("centroids = {}".format(centroids))
 	centroids_set = set();
 	for c in centroids:
 		ds = [math.sqrt((c[0] - cx)**2 + (c[1] - cy)**2) for (cx, cy) in centroids];
@@ -154,8 +171,10 @@ def merge_incorrect_splits_and_get_centroids(imp, centroid_distance_limit=100, s
 	pa = ParticleAnalyzer(ParticleAnalyzer.ADD_TO_MANAGER, ParticleAnalyzer.AREA | ParticleAnalyzer.SLICE | ParticleAnalyzer.CENTROID, rt, size_limit, mxsz);
 	pa.setRoiManager(roim);
 	pa.analyze(imp);
-	rt_xs = rt.getColumn(rt.getColumnIndex("X")).tolist();
-	rt_ys = rt.getColumn(rt.getColumnIndex("Y")).tolist();
+	MyWaitForUser("paise", "pause post-merge incorrect splits particel analysis 2");
+	if rt.columnExists("X"):
+		rt_xs = rt.getColumn(rt.getColumnIndex("X")).tolist();
+		rt_ys = rt.getColumn(rt.getColumnIndex("Y")).tolist();
 	centroids = [(x, y) for x, y in zip(rt_xs, rt_ys)];
 	for c in centroids:
 		centroids_set.add(c);
@@ -166,13 +185,15 @@ def merge_incorrect_splits_and_get_centroids(imp, centroid_distance_limit=100, s
 	roim.reset();
 	roim.close();
 	for idx, c in enumerate(centroids):
-		roi = OvalRoi(c[0], c[1], 1, 1);
+		roi = OvalRoi(c[0], c[1], 10, 10);
 		out_imp.setRoi(roi);
 		IJ.run(out_imp, "Set...", "value={} slice".format(idx+1));
 	imp.changes = False;
-	imp.close();
+	#imp.close();
 	return out_imp;
 
+# SETUP
+Prefs.blackBackground = True;
 # select folders
 dc = DirectoryChooser("choose root folder containing data for analysis");
 input_folder = dc.getDirectory();
@@ -184,6 +205,7 @@ input_folder = dc.getDirectory();
 
 # load  image(s):
 files_lst = [f for f in os.listdir(input_folder) if os.path.splitext(f)[1]=='.tif'];
+out_statses = [];
 for f in files_lst:
 	imp = IJ.openImage(os.path.join(input_folder, f));
 	metadata = import_iq3_metadata(os.path.join(input_folder, os.path.splitext(f)[0] + '.txt'));
@@ -194,6 +216,7 @@ for f in files_lst:
 	imp.setC(1);
 	IJ.run(imp, "Green", "");
 	imp.show();
+	imp.setDisplayMode(IJ.COMPOSITE);
 	print(metadata);
 	cal = imp.getCalibration();
 	cal.setUnit(metadata["y_unit"]);
@@ -207,15 +230,29 @@ for f in files_lst:
 	ecad_imp = channels[1];
 	ecad_imp.setTitle("E-cadherin");
 	nuc_imp = channels[2];
+	nuc_imp.show();
+	MyWaitForUser("pause", "pause");
 	IJ.run(nuc_imp, "Make Binary", "method=Moments background=Dark calculate");
 	nuc_imp.show();
-	IJ.run(nuc_imp, "Invert", "");
-	IJ.run(nuc_imp, "Fill Holes", "");
+	MyWaitForUser("pause", "pause post-make binary");
+	post_process = 2;
+	if post_process==1:
+		IJ.run(nuc_imp, "Invert", "");
+		IJ.run(nuc_imp, "Fill Holes", "");
+	else:
+		IJ.run(nuc_imp, "Dilate", "");
+		IJ.run(nuc_imp, "Dilate", "");
+		IJ.run(nuc_imp, "Fill Holes", "");
+	MyWaitForUser("pause", "pause post-postprocess");
 	nuc_imp = keep_blobs_bigger_than(nuc_imp, min_size_pix=100);
+	MyWaitForUser("pause", "pause post-get rid of small blobs");
 	IJ.run(nuc_imp, "Watershed", "");
+	MyWaitForUser("pause", "pause post-watershed");
 	nuc_imp = keep_blobs_bigger_than(nuc_imp, min_size_pix=1000);
+	MyWaitForUser("pause", "pause post-get rid of small blobs");
 
 	ecad_imp.show();
+	IJ.run(ecad_imp, "Enhance Contrast", "saturated=0.35");
 	ws_seed_imp = merge_incorrect_splits_and_get_centroids(nuc_imp, centroid_distance_limit=100, size_limit=10000);
 	binary_cells_imp = generate_cell_masks(ws_seed_imp, ecad_imp) # move stuff below into function...
 	ecad_imp.close();
@@ -226,3 +263,5 @@ for f in files_lst:
 	# shape stats (and save)
 	out_stats, rois = generate_stats(binary_cells_imp, gfp_imp, cal);
 	print(out_stats);
+	out_statses.append((f, out_stats));
+print(out_statses);
