@@ -6,7 +6,7 @@ from ij.plugin import HyperStackConverter, ZProjector, ChannelSplitter, Threshol
 from ij.plugin.frame import RoiManager
 from ij.measure import ResultsTable
 from ij.plugin.filter import ParticleAnalyzer
-from ij.gui import WaitForUserDialog, PointRoi, OvalRoi, NonBlockingGenericDialog
+from ij.gui import WaitForUserDialog, PointRoi, OvalRoi, NonBlockingGenericDialog, GenericDialog
 from ij.measure import Measurements
 
 # string definitions
@@ -15,6 +15,23 @@ _degrees = u'\u00B0';
 _squared = u'\u00B2';
 _totheminusone = u'\u02C9' + u'\u00B9';
 _sigma = u'\u03C3'
+
+class Parameters(object):
+	def __init__(self, last_input_path=None, last_output_path=None, last_analysis_mode=None):
+		self.last_input_path = last_input_path;
+		self.last_output_path = last_output_path;
+		self.last_analysis_mode = last_analysis_mode if last_analysis_mode is not None else self.list_analysis_modes()[0];
+
+	def persist_parameters(self):
+		"""save analysis parameters to a json in appdata folder or equivalent"""
+		pass;
+
+	def save_as_json(self, dest_path):
+		"""save analysis parameters as a json"""
+		pass;
+
+	def list_analysis_modes(self):
+		return ["GFP intensity", "E-cadherin watershed", "Manual"];
 
 class CellShapeResults(object):
 	"""simple class to contain cell shape analysis results"""
@@ -42,6 +59,14 @@ class CellShapeResults(object):
 	def calculate_cell_spikiness_index(self, cell_area_um2, cell_perimeter_um):
 		"""calculate cell spikiness index, i.e. deviation from circular cell"""
 		return (cell_perimeter_um**2 / (4 * math.pi * cell_area_um2));
+
+def choose_analysis_mode(params):
+	"""present UI for choosing how cells should be identified"""
+	dialog = GenericDialog("Analysis methods");
+	dialog.addMessage("Please choose how cell shape anlaysis should proceed:");
+	dialog.addChoice("Analysis mode", params.list_analysis_modes(), params.last_analysis_mode);
+	dialog.showDialog();
+	return dialog.getNextChoice();
 
 def MyWaitForUser(title, message):
 	"""non-modal dialog with option to cancel the analysis"""
@@ -115,7 +140,7 @@ def keep_blobs_bigger_than(imp, min_size_pix=100):
 	rt.reset();
 	pa.analyze(imp);
 	rt_areas = rt.getColumn(rt.getColumnIndex("Area")).tolist();
-	print("Number of cells identified: {}".format(len(rt_areas)));
+#	print("Number of cells identified: {}".format(len(rt_areas)));
 	for idx in range(len(rt_areas)):
 		roim.select(out_imp, idx);
 		IJ.run(out_imp, "Set...", "value=255 slice");
@@ -292,6 +317,41 @@ def save_output_csv(cell_shape_results, output_folder):
 	return;
 	
 
+def gfp_analysis(imp, file_name):
+	"""perform analysis based on gfp intensity thresholding"""
+	cal = imp.getCalibration();
+	channel_imps = ChannelSplitter.split(imp);
+	gfp_imp = channel_imps[0];
+	gfp_imp.setTitle("GFP");
+	threshold_imp = Duplicator().run(gfp_imp);
+	threshold_imp.setTitle("GFP_threshold_imp");
+	ecad_imp = channel_imps[1];
+	ecad_imp.setTitle("E-cadherin");
+	nuc_imp = channel_imps[2];
+	IJ.run(threshold_imp, "Make Binary", "method=Otsu background=Dark calculate");
+	IJ.run(threshold_imp, "Fill Holes", "");
+	erode_count = 2;
+	for _ in range(erode_count):
+		IJ.run(threshold_imp, "Erode", "");
+	threshold_imp = keep_blobs_bigger_than(threshold_imp, min_size_pix=1000);
+	threshold_imp = my_kill_borders(threshold_imp);
+	out_stats, rois = generate_stats(threshold_imp, gfp_imp, cal, os.path.splitext(file_name)[0]);
+	print("Number of cells identified = {}".format(len(out_stats)));
+	threshold_imp.changes = False;
+	threshold_imp.close();
+	# save output image
+	output_folder = "C:\\Users\\dougk\\Desktop\\dummy output"
+	save_qc_image(imp, rois, "{}_plus_overlay.tiff".format(os.path.join(output_folder, os.path.splitext(file_name)[0])));
+	imp.changes = False;
+	imp.close();
+	save_output_csv(out_stats, output_folder);
+	return out_stats;
+
+def manual_analysis(imp, file_name):
+	"""perform analysis based on manually drawn cells"""
+	print("performing manual shape analysis...");
+	return None;
+
 def main():
 	# SETUP
 	Prefs.blackBackground = True;
@@ -303,11 +363,14 @@ def main():
 	#timestamp = datetime.strftime(datetime.now(), '%Y-%m-%d %H-%M-%S');
 	#output_folder = os.path.join(output_folder, (timestamp + ' output'));
 	#os.mkdir(output_folder);
+	params = Parameters();
+	analysis_mode = choose_analysis_mode(params);
 
 	# load  image(s):
 	files_lst = [f for f in os.listdir(input_folder) if os.path.splitext(f)[1]=='.tif'];
 	out_statses = [];
 	for f in files_lst:
+		print("Working on image {}...".format(os.path.splitext(f)[0]))
 		imp = IJ.openImage(os.path.join(input_folder, f));
 		metadata = import_iq3_metadata(os.path.join(input_folder, os.path.splitext(f)[0] + '.txt'));
 		imp = HyperStackConverter.toHyperStack(imp, 3, imp.getNSlices()//3, 1, "Color");
@@ -323,44 +386,19 @@ def main():
 		IJ.run(imp, "Enhance Contrast", "saturated=0.35");
 		imp.show();
 		imp.setDisplayMode(IJ.COMPOSITE);
-		print(metadata);
 		cal = imp.getCalibration();
 		cal.setUnit(metadata["y_unit"]);
 		cal.pixelWidth = metadata["x_physical_size"];
 		cal.pixelHeight = metadata["y_physical_size"];
 		imp.setCalibration(cal);
 	
-		# split channels and use gfp to identify which cells have ML1b expression
-		channels = ChannelSplitter.split(imp);
-		gfp_imp = channels[0];
-		gfp_imp.setTitle("GFP");
-		threshold_imp = Duplicator().run(gfp_imp);
-		threshold_imp.setTitle("GFP_threshold_imp");
-		ecad_imp = channels[1];
-		ecad_imp.setTitle("E-cadherin");
-		nuc_imp = channels[2];
-		IJ.run(threshold_imp, "Make Binary", "method=Otsu background=Dark calculate");
-		IJ.run(threshold_imp, "Fill Holes", "");
-		erode_count = 2;
-		for _ in range(erode_count):
-			IJ.run(threshold_imp, "Erode", "");
-		threshold_imp = keep_blobs_bigger_than(threshold_imp, min_size_pix=1000);
-		threshold_imp = my_kill_borders(threshold_imp);
-		out_stats, rois = generate_stats(threshold_imp, gfp_imp, cal, os.path.splitext(f)[0]);
-		threshold_imp.changes = False;
-		threshold_imp.close();
-		print("out_stats = {}".format(out_stats));
-		print("len(out_stats) = {}".format(len(out_stats)));
-		print("rois = {}".format(rois));
-		print("len(rois) = {}".format(len(rois)));
-		# save output image
-		output_folder = "C:\\Users\\dougk\\Desktop\\dummy output"
-		save_qc_image(imp, rois, "{}_plus_overlay.tiff".format(os.path.join(output_folder, os.path.splitext(f)[0])));
-		imp.changes = False;
-		imp.close();
-		save_output_csv(out_stats, output_folder);
+		if analysis_mode=="GFP intensity":
+			out_stats = gfp_analysis(imp, f);
+		elif analysis_mode=="Manual":
+			out_stats = manual_analysis(imp, f);
 		out_statses.extend(out_stats);
 		# get # nuclei per "cell"
+	print(out_statses);
 
 
 # It's best practice to create a function that contains the code that is executed when running the script.
