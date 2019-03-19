@@ -9,9 +9,18 @@ from ij.plugin.filter import ParticleAnalyzer
 from ij.gui import WaitForUserDialog, PointRoi, OvalRoi, NonBlockingGenericDialog
 from ij.measure import Measurements
 
+# string definitions
+_um = u'\u00B5m';
+_degrees = u'\u00B0';
+_squared = u'\u00B2';
+_totheminusone = u'\u02C9' + u'\u00B9';
+_sigma = u'\u03C3'
+
 class CellShapeResults(object):
 	"""simple class to contain cell shape analysis results"""
 	def __init__(self, 
+					file_name=None,
+					cell_index=None,
 					cell_area_um2=None,
 					cell_perimeter_um=None,
 					cell_spikiness_index=None, 
@@ -20,6 +29,8 @@ class CellShapeResults(object):
 					cell_gfp_I_sd=None, 
 					nuclei_in_cell=1
 					):
+		self.file_name = file_name;
+		self.cell_index = cell_index;
 		self.cell_area_um2 = cell_area_um2;
 		self.cell_perimeter_um = cell_perimeter_um;
 		self.cell_spikiness_index = cell_spikiness_index if cell_spikiness_index is not None else self.calculate_cell_spikiness_index(cell_area_um2, cell_perimeter_um);
@@ -115,8 +126,7 @@ def keep_blobs_bigger_than(imp, min_size_pix=100):
 	imp.close();
 	return out_imp;
 
-
-def generate_stats(seg_binary_imp, intensity_channel_imp, cal):
+def generate_stats(seg_binary_imp, intensity_channel_imp, cal, file_name):
 	"""generate output from segmentation image and paired image from which to take intensities"""
 	seg_binary_imp.killRoi();
 	rt = ResultsTable();
@@ -141,7 +151,16 @@ def generate_stats(seg_binary_imp, intensity_channel_imp, cal):
 		I_sds.append(stats.stdDev);
 	roim.reset();
 	roim.close();
-	return [(a * (cal.pixelWidth**2), p * cal.pixelWidth, ar, m, sd) for a, p, ar, m, sd in zip(rt_as, rt_ps, rt_ars, I_means, I_sds)], rois;
+	cell_shapes = [CellShapeResults(file_name=file_name,
+									cell_index=idx, 
+									cell_area_um2=(a * (cal.pixelWidth**2)),
+									cell_perimeter_um=(p * cal.pixelWidth),
+									cell_spikiness_index=None, 
+									cell_aspect_ratio=ar,
+									cell_gfp_I_mean=m,
+									cell_gfp_I_sd=sd, 
+									nuclei_in_cell=1) for idx, (a, p, ar, m, sd) in enumerate(zip(rt_as, rt_ps, rt_ars, I_means, I_sds))];
+	return cell_shapes, rois;
 	
 def generate_cell_masks(watershed_seeds_imp, intensity_channel_imp):
 	"""perform marker-driven watershed on image in intensity_channel_imp"""
@@ -238,106 +257,116 @@ def save_qc_image(imp, rois, output_path):
 	roim.runCommand("Show None");
 	roim.close();
 
-def save_output_csv(out_statses, output_folder):
-	"""save the output of an analysis run to csv"""
-	# TODO: deal with this as dictionary!
-	f = open(os.path.join(output_folder, "output.csv"), 'wb');
+def save_output_csv(cell_shape_results, output_folder):
+	"""generate an output csv on completion of each image rather than at the end of the run"""
+	out_path = os.path.join(output_folder, "output.csv");
+	csv_exists = os.path.exists(out_path);
+	f_open_mode = 'ab' if csv_exists else 'wb';
+	f = open(out_path, f_open_mode);
 	try:
 		writer = csv.writer(f);
-		writer.writerow(["Image", "ROI number", "Cell area", "Cell perimeter", "Cell aspect ratio", "GFP channel mean", "GFP channel SD"]);
-		for out_stats in out_statses:
-			print("out_stats = {}".format(out_stats));
-			for roi_idx, stats in enumerate(out_stats[1]):
-				print("roi_idx = {}".format(roi_idx));
-				print("stast = {}".format(stats));
-				writer.writerow([out_stats[0], roi_idx, stats[0], stats[1], stats[2], stats[3], stats[4]]);
+		if not csv_exists:
+			writer.writerow(["Image", 
+					"ROI number", 
+					("Cell area, " + _um + _squared), 
+					"Cell perimeter, " + _um, 
+					"Cell aspect ratio", 
+					"Cell spikiness index", 
+					"GFP channel mean", 
+					"GFP channel SD", 
+					"# nuclei per cell"]);
+		for csr in cell_shape_results:
+			writer.writerow([csr.file_name, 
+								csr.cell_index, 
+								csr.cell_area_um2,
+								csr.cell_perimeter_um,
+								csr.cell_aspect_ratio, 
+								csr.cell_spikiness_index, 
+								csr.cell_gfp_I_mean, 
+								csr.cell_gfp_I_sd, 
+								csr.nuclei_in_cell]);
 	except IOError as e:
 		print("problem saving, {}".format(e));
 	finally:
 		f.close();
 	return;
-
-def save_output_csv(out_stats, image_name, output_folder):
-	"""generate an output csv on completion of each image rather than at the end of the run"""
-	out_path = os.path.join(output_folder, "output.csv");
-	csv_exists = os.path.exists(out_path);
-	f_open_mode = 'a' if csv_exists else 'wb';
-	f = open(out_path, f_open_mode);
-	try:
-		writer = csv.writer(f);
-		if not csv_exists:
-			writer.writerow(["Image", "ROI number", "Cell area", "Cell perimeter", "Cell aspect ratio", "GFP channel mean", "GFP channel SD"])
 	
-		
 
-# SETUP
-Prefs.blackBackground = True;
-# select folders
-dc = DirectoryChooser("choose root folder containing data for analysis");
-input_folder = dc.getDirectory();
-#dc = DirectoryChooser("choose location to save output");
-#output_folder = dc.getDirectory();
-#timestamp = datetime.strftime(datetime.now(), '%Y-%m-%d %H-%M-%S');
-#output_folder = os.path.join(output_folder, (timestamp + ' output'));
-#os.mkdir(output_folder);
+def main():
+	# SETUP
+	Prefs.blackBackground = True;
+	# select folders
+	dc = DirectoryChooser("choose root folder containing data for analysis");
+	input_folder = dc.getDirectory();
+	#dc = DirectoryChooser("choose location to save output");
+	#output_folder = dc.getDirectory();
+	#timestamp = datetime.strftime(datetime.now(), '%Y-%m-%d %H-%M-%S');
+	#output_folder = os.path.join(output_folder, (timestamp + ' output'));
+	#os.mkdir(output_folder);
 
-# load  image(s):
-files_lst = [f for f in os.listdir(input_folder) if os.path.splitext(f)[1]=='.tif'];
-out_statses = [];
-for f in files_lst:
-	imp = IJ.openImage(os.path.join(input_folder, f));
-	metadata = import_iq3_metadata(os.path.join(input_folder, os.path.splitext(f)[0] + '.txt'));
-	imp = HyperStackConverter.toHyperStack(imp, 3, imp.getNSlices()//3, 1, "Color");
-	imp = ZProjector.run(imp,"max");
-	imp.setC(3);
-	IJ.run(imp, "Blue", "");
-	IJ.run(imp, "Enhance Contrast", "saturated=0.35");
-	imp.setC(2);
-	IJ.run(imp, "Red", "");
-	IJ.run(imp, "Enhance Contrast", "saturated=0.35");
-	imp.setC(1);
-	IJ.run(imp, "Green", "");
-	IJ.run(imp, "Enhance Contrast", "saturated=0.35");
-	imp.show();
-	imp.setDisplayMode(IJ.COMPOSITE);
-	print(metadata);
-	cal = imp.getCalibration();
-	cal.setUnit(metadata["y_unit"]);
-	cal.pixelWidth = metadata["x_physical_size"];
-	cal.pixelHeight = metadata["y_physical_size"];
-	imp.setCalibration(cal);
+	# load  image(s):
+	files_lst = [f for f in os.listdir(input_folder) if os.path.splitext(f)[1]=='.tif'];
+	out_statses = [];
+	for f in files_lst:
+		imp = IJ.openImage(os.path.join(input_folder, f));
+		metadata = import_iq3_metadata(os.path.join(input_folder, os.path.splitext(f)[0] + '.txt'));
+		imp = HyperStackConverter.toHyperStack(imp, 3, imp.getNSlices()//3, 1, "Color");
+		imp = ZProjector.run(imp,"max");
+		imp.setC(3);
+		IJ.run(imp, "Blue", "");
+		IJ.run(imp, "Enhance Contrast", "saturated=0.35");
+		imp.setC(2);
+		IJ.run(imp, "Red", "");
+		IJ.run(imp, "Enhance Contrast", "saturated=0.35");
+		imp.setC(1);
+		IJ.run(imp, "Green", "");
+		IJ.run(imp, "Enhance Contrast", "saturated=0.35");
+		imp.show();
+		imp.setDisplayMode(IJ.COMPOSITE);
+		print(metadata);
+		cal = imp.getCalibration();
+		cal.setUnit(metadata["y_unit"]);
+		cal.pixelWidth = metadata["x_physical_size"];
+		cal.pixelHeight = metadata["y_physical_size"];
+		imp.setCalibration(cal);
 	
-	# split channels and use gfp to identify which cells have ML1b expression
-	channels = ChannelSplitter.split(imp);
-	gfp_imp = channels[0];
-	gfp_imp.setTitle("GFP");
-	threshold_imp = Duplicator().run(gfp_imp);
-	threshold_imp.setTitle("GFP_threshold_imp");
-	ecad_imp = channels[1];
-	ecad_imp.setTitle("E-cadherin");
-	nuc_imp = channels[2];
-	IJ.run(threshold_imp, "Make Binary", "method=Otsu background=Dark calculate");
-	IJ.run(threshold_imp, "Fill Holes", "");
-	erode_count = 2;
-	for _ in range(erode_count):
-		IJ.run(threshold_imp, "Erode", "");
-	threshold_imp = keep_blobs_bigger_than(threshold_imp, min_size_pix=1000);
-	threshold_imp = my_kill_borders(threshold_imp);
-	out_stats, rois = generate_stats(threshold_imp, gfp_imp, cal);
-	threshold_imp.changes = False;
-	threshold_imp.close();
-	print("out_stats = {}".format(out_stats));
-	print("len(out_stats) = {}".format(len(out_stats)));
-	print("rois = {}".format(rois));
-	print("len(rois) = {}".format(len(rois)));
-	# save output image
-	output_folder = "C:\\Users\\dougk\\Desktop\\dummy output"
-	save_qc_image(imp, rois, "{}_plus_overlay.tiff".format(os.path.join(output_folder, os.path.splitext(f)[0])));
-	imp.changes = False;
-	imp.close();
-	out_statses.append((os.path.splitext(f)[0], out_stats));
-	# save/append output data
-	# get # nuclei per "cell"
-save_output_csv(out_statses, output_folder);
+		# split channels and use gfp to identify which cells have ML1b expression
+		channels = ChannelSplitter.split(imp);
+		gfp_imp = channels[0];
+		gfp_imp.setTitle("GFP");
+		threshold_imp = Duplicator().run(gfp_imp);
+		threshold_imp.setTitle("GFP_threshold_imp");
+		ecad_imp = channels[1];
+		ecad_imp.setTitle("E-cadherin");
+		nuc_imp = channels[2];
+		IJ.run(threshold_imp, "Make Binary", "method=Otsu background=Dark calculate");
+		IJ.run(threshold_imp, "Fill Holes", "");
+		erode_count = 2;
+		for _ in range(erode_count):
+			IJ.run(threshold_imp, "Erode", "");
+		threshold_imp = keep_blobs_bigger_than(threshold_imp, min_size_pix=1000);
+		threshold_imp = my_kill_borders(threshold_imp);
+		out_stats, rois = generate_stats(threshold_imp, gfp_imp, cal, os.path.splitext(f)[0]);
+		threshold_imp.changes = False;
+		threshold_imp.close();
+		print("out_stats = {}".format(out_stats));
+		print("len(out_stats) = {}".format(len(out_stats)));
+		print("rois = {}".format(rois));
+		print("len(rois) = {}".format(len(rois)));
+		# save output image
+		output_folder = "C:\\Users\\dougk\\Desktop\\dummy output"
+		save_qc_image(imp, rois, "{}_plus_overlay.tiff".format(os.path.join(output_folder, os.path.splitext(f)[0])));
+		imp.changes = False;
+		imp.close();
+		save_output_csv(out_stats, output_folder);
+		out_statses.extend(out_stats);
+		# get # nuclei per "cell"
+
+
+# It's best practice to create a function that contains the code that is executed when running the script.
+# This enables us to stop the script by just calling return.
+if __name__ in ['__builtin__','__main__']:
+    main();
+
 	
 	
