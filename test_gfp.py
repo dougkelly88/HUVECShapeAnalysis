@@ -66,7 +66,9 @@ def choose_analysis_mode(params):
 	dialog.addMessage("Please choose how cell shape anlaysis should proceed:");
 	dialog.addChoice("Analysis mode", params.list_analysis_modes(), params.last_analysis_mode);
 	dialog.showDialog();
-	return dialog.getNextChoice();
+	if dialog.wasCanceled():
+		raise KeyboardInterrupt("Run canceled");
+	return dialog.getNextChoice();	
 
 def MyWaitForUser(title, message):
 	"""non-modal dialog with option to cancel the analysis"""
@@ -151,6 +153,21 @@ def keep_blobs_bigger_than(imp, min_size_pix=100):
 	imp.close();
 	return out_imp;
 
+def generate_cell_rois(seg_binary_imp):
+	"""generate rois from which cell shape information will be gleaned"""
+	seg_binary_imp.killRoi();
+	mxsz = seg_binary_imp.width * seg_binary_imp.height;
+	roim = RoiManager(False);
+	pa_options = ParticleAnalyzer.AREA | ParticleAnalyzer.PERIMETER | ParticleAnalyzer.SHAPE_DESCRIPTORS;
+	pa = ParticleAnalyzer(ParticleAnalyzer.ADD_TO_MANAGER, pa_options, None, 1000, mxsz);
+	pa.setRoiManager(roim);
+	roim.reset();
+	pa.analyze(seg_binary_imp);
+	rois = roim.getRoisAsArray();
+	roim.reset();
+	roim.close();
+	return rois;
+
 def generate_stats(seg_binary_imp, intensity_channel_imp, cal, file_name):
 	"""generate output from segmentation image and paired image from which to take intensities"""
 	seg_binary_imp.killRoi();
@@ -187,6 +204,31 @@ def generate_stats(seg_binary_imp, intensity_channel_imp, cal, file_name):
 									nuclei_in_cell=1) for idx, (a, p, ar, m, sd) in enumerate(zip(rt_as, rt_ps, rt_ars, I_means, I_sds))];
 	return cell_shapes, rois;
 	
+def generate_cell_shape_results(rois, intensity_channel_imp, cal, file_name):
+	"""from list of rois, generate results describing the cell enclosed in each roi"""
+	pixel_width = 1.0 if cal is None else cal.pixelWidth;
+	cell_shapes = [];
+	for idx, roi in enumerate(rois):
+		intensity_channel_imp.setRoi(roi);
+		stats = roi.getStatistics();
+		#stats = intensity_channel_imp.getStatistics(Measurements.MEAN | Measurements.STD_DEV);
+		I_mean = stats.mean;
+		I_sd = stats.stdDev;
+		area = stats.area * (pixel_width**2);
+		perimeter = roi.getLength() * pixel_width;
+		aspect_ratio = stats.major/stats.minor;
+		cell_shapes.append(CellShapeResults(file_name=file_name, 
+									  cell_index=idx, 
+									  cell_area_um2=area,
+									  cell_perimeter_um=perimeter, 
+									  cell_aspect_ratio=aspect_ratio,
+									  cell_spikiness_index=None,
+									  cell_gfp_I_mean=I_mean,
+									  cell_gfp_I_sd=I_sd, 
+									  nuclei_in_cell=1));
+	return cell_shapes;
+
+
 def generate_cell_masks(watershed_seeds_imp, intensity_channel_imp):
 	"""perform marker-driven watershed on image in intensity_channel_imp"""
 	IJ.run(imp, "Marker-controlled Watershed", "input={} marker=Nuclei mask=None binary calculate use".format(os.path.splitext(intensity_channel_imp.getTitle())[0]));
@@ -335,7 +377,9 @@ def gfp_analysis(imp, file_name):
 		IJ.run(threshold_imp, "Erode", "");
 	threshold_imp = keep_blobs_bigger_than(threshold_imp, min_size_pix=1000);
 	threshold_imp = my_kill_borders(threshold_imp);
-	out_stats, rois = generate_stats(threshold_imp, gfp_imp, cal, os.path.splitext(file_name)[0]);
+#	out_stats, rois = generate_stats(threshold_imp, gfp_imp, cal, os.path.splitext(file_name)[0]);
+	rois = generate_cell_rois(threshold_imp);
+	out_stats = generate_cell_shape_results(rois, gfp_imp, cal, file_name);
 	print("Number of cells identified = {}".format(len(out_stats)));
 	threshold_imp.changes = False;
 	threshold_imp.close();
@@ -350,6 +394,49 @@ def gfp_analysis(imp, file_name):
 def manual_analysis(imp, file_name):
 	"""perform analysis based on manually drawn cells"""
 	print("performing manual shape analysis...");
+	cal = imp.getCalibration();
+	channel_imps = ChannelSplitter.split(imp);
+	gfp_imp = channel_imps[0];
+	IJ.setTool("freehand");
+	proceed = False;
+	roim = RoiManager();
+	roim.runCommand("Show all with labels");
+	#while not proceed:
+	#	dialog = GenericNonBlockingDialog("Perform manual segmentation");
+	#	dialog.addMessage("Perform manual segmentation...");
+	#	dialog.enableYesNoCancel("Add current ROI", "Proceed to next image");
+	#	dialog.showDialog();
+	#	if dialog.wasCanceled():
+	#		raise KeyboardInterrupt("Run canceled");
+	#	elif dialog.wasOKed():
+	#		proceed = True;
+	#	else:
+	#		roi = imp.getRoi();
+#	gfp_imp.show();
+	dialog = NonBlockingGenericDialog("Perform manual segmentation");
+	dialog.setOKLabel("Proceed to next image...")
+	dialog.addMessage("Perform manual segmentation: ");
+	dialog.addMessage("Draw around cells and add to the region of interest manager (Ctrl+T)");
+	dialog.addMessage("You can see what you've added so far if you check \"show all\" on the ROI manager");
+	dialog.addMessage("Then press \"proceed to next image\" when all cells have been added");
+	dialog.showDialog();
+	if dialog.wasCanceled():
+		raise KeyboardInterrupt("Run canceled");
+	elif dialog.wasOKed():
+		rois = roim.getRoisAsArray();
+		roim.reset();
+		roim.close();
+		out_stats = generate_cell_shape_results(rois, gfp_imp, cal, file_name);
+		print("Number of cells identified = {}".format(len(out_stats)));
+		# save output image
+		output_folder = "C:\\Users\\dougk\\Desktop\\dummy output"
+		save_qc_image(imp, rois, "{}_plus_overlay.tiff".format(os.path.join(output_folder, os.path.splitext(file_name)[0])));
+		imp.changes = False;
+		imp.close();
+		save_output_csv(out_stats, output_folder);
+		return out_stats;
+#	gfp_imp.changes = False;
+#	gfp_imp.close();
 	return None;
 
 def main():
@@ -358,6 +445,8 @@ def main():
 	# select folders
 	dc = DirectoryChooser("choose root folder containing data for analysis");
 	input_folder = dc.getDirectory();
+	if input_folder is None:
+		raise KeyboardInterrupt("Run canceled");
 	#dc = DirectoryChooser("choose location to save output");
 	#output_folder = dc.getDirectory();
 	#timestamp = datetime.strftime(datetime.now(), '%Y-%m-%d %H-%M-%S');
@@ -398,6 +487,7 @@ def main():
 			out_stats = manual_analysis(imp, f);
 		out_statses.extend(out_stats);
 		# get # nuclei per "cell"
+	WaitForUserDialog("Done", "Done!").show();
 	print(out_statses);
 
 
