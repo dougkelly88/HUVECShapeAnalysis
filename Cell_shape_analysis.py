@@ -217,7 +217,7 @@ def keep_blobs_bigger_than(imp, min_size_pix=100):
 	else:
 		title_addition = "Size_filtered_";
 	out_imp = IJ.createImage("{}{}".format(title_addition, imp.getTitle()), imp.getWidth(), imp.getHeight(), 1, 8);
-	out_imp.show();
+	#out_imp.show();
 	IJ.run(out_imp, "Select All", "");
 	IJ.run(out_imp, "Set...", "value=0 slice");
 	mxsz = imp.width * imp.height;
@@ -308,21 +308,16 @@ def merge_incorrect_splits_and_get_centroids(imp, centroid_distance_limit=100, s
 	imp.killRoi();
 	rt = ResultsTable();
 	out_imp = IJ.createImage("Nuclei centroids from {}".format(imp.getTitle()), imp.getWidth(), imp.getHeight(), 1, 8);
-	out_imp.show();
 	IJ.run(out_imp, "Select All", "");
 	IJ.run(out_imp, "Set...", "value=0 slice");
-	out_imp.show();
 	cal = imp.getCalibration();
 	mxsz = imp.width * cal.pixelWidth * imp.height * cal.pixelHeight;
-	print("mxsz = {}".format(mxsz));
 	roim = RoiManager();
-	imp.show();
 	pa = ParticleAnalyzer(ParticleAnalyzer.ADD_TO_MANAGER, ParticleAnalyzer.AREA | ParticleAnalyzer.SLICE | ParticleAnalyzer.CENTROID, rt, 0, size_limit);
 	pa.setRoiManager(roim);
 	roim.reset();
 	rt.reset();
 	pa.analyze(imp);
-	MyWaitForUser("paise", "pause in merge_incorrect_splits: post-get particles smaller than size limit = {}".format(size_limit));
 	centroids_set = set();
 	if roim.getCount()>0:
 		rt_xs = rt.getColumn(rt.getColumnIndex("X")).tolist();
@@ -341,7 +336,6 @@ def merge_incorrect_splits_and_get_centroids(imp, centroid_distance_limit=100, s
 	pa = ParticleAnalyzer(ParticleAnalyzer.ADD_TO_MANAGER, ParticleAnalyzer.AREA | ParticleAnalyzer.SLICE | ParticleAnalyzer.CENTROID, rt, size_limit, mxsz);
 	pa.setRoiManager(roim);
 	pa.analyze(imp);
-	MyWaitForUser("paise", "pause in merge_incorrect_splits: post-get centroid for nuclei bigger than size limit = {}".format(size_limit));
 	if roim.getCount()>0:
 		if rt.columnExists("X"):
 			rt_xs = rt.getColumn(rt.getColumnIndex("X")).tolist();
@@ -359,7 +353,7 @@ def merge_incorrect_splits_and_get_centroids(imp, centroid_distance_limit=100, s
 		roi = OvalRoi(c[0], c[1], 10, 10);
 		out_imp.setRoi(roi);
 		IJ.run(out_imp, "Set...", "value={} slice".format(idx+1));
-	imp.changes = False;
+	#imp.changes = False;
 	#imp.close();
 	return out_imp, centroids;
 
@@ -435,27 +429,15 @@ def get_nuclei_locations(nuc_imp, cal, distance_threshold_um=10, size_threshold_
 	for _ in range(dilate_count):
 		IJ.run(nuc_imp, "Dilate", "");
 	IJ.run(nuc_imp, "Fill Holes", "");
-	MyWaitForUser("pause", "post-threshold, dilate, fill holes")
 	nuc_imp = keep_blobs_bigger_than(nuc_imp, min_size_pix=math.ceil(float(size_limit_pix)/10));
-	MyWaitForUser("pause", "post-size filt1")
 	IJ.run(nuc_imp, "Watershed", "");
-	nuc_imp.updateAndDraw();
-	MyWaitForUser("pause", "post-watershed")
-#	nuc_imp = keep_blobs_bigger_than(nuc_imp, min_size_pix=1000);
-#	nuc_imp.updateAndDraw();
-#	MyWaitForUser("pause", "post-size filt2")
-	
-	print("size_limit_pix = {}; distance_limit_pix = {}".format(size_limit_pix, distance_limit_pix));
 	ws_seed_imp, centroids = merge_incorrect_splits_and_get_centroids(nuc_imp, centroid_distance_limit=distance_limit_pix, size_limit=size_limit_pix);
-	ws_seed_imp.show();
-	MyWaitForUser("pause", "post-merge and get centroids");
 	return centroids;
 
 def get_no_nuclei_in_cell(roi, nuclei_centroids):
 	"""for a given cell roi and list of nuclei centroids from the image, return how many nuclei lie within the cell"""
 	no_nuclei = 0;
 	for c in nuclei_centroids:
-		print("C = {}".format(c));
 		if roi.contains(int(c[0]), int(c[1])):
 			no_nuclei += 1;
 	return no_nuclei;
