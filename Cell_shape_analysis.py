@@ -7,7 +7,7 @@ from ij.plugin import HyperStackConverter, ZProjector, ChannelSplitter, Threshol
 from ij.plugin.frame import RoiManager
 from ij.measure import ResultsTable
 from ij.plugin.filter import ParticleAnalyzer
-from ij.gui import WaitForUserDialog, PointRoi, OvalRoi, NonBlockingGenericDialog, GenericDialog
+from ij.gui import WaitForUserDialog, PointRoi, OvalRoi, NonBlockingGenericDialog, GenericDialog, PolygonRoi
 from ij.measure import Measurements
 
 # string definitions
@@ -131,13 +131,14 @@ class CellShapeResults(object):
 					cell_gfp_I_mean=None,
 					cell_gfp_I_sd=None, 
 					nuclear_centroids_in_cell=0, 
-					nuclei_enclosed_in_cell=0
-					):
+					nuclei_enclosed_in_cell=0, 
+					roi=None):
 		self.file_name = file_name;
 		self.cell_index = cell_index;
+		self.roi = roi;
 		self.cell_area_um2 = cell_area_um2;
 		self.cell_perimeter_um = cell_perimeter_um;
-		self.cell_spikiness_index = cell_spikiness_index if cell_spikiness_index is not None else self.calculate_cell_spikiness_index(cell_area_um2, cell_perimeter_um);
+		self.cell_spikiness_index = cell_spikiness_index;
 		self.cell_aspect_ratio = cell_aspect_ratio;
 		self.cell_gfp_I_mean = cell_gfp_I_mean;
 		self.cell_gfp_I_sd = cell_gfp_I_sd;
@@ -282,16 +283,22 @@ def generate_cell_shape_results(rois, intensity_channel_imp, cal, file_name, no_
 		area = stats.area * (pixel_width**2);
 		perimeter = roi.getLength();
 		aspect_ratio = stats.major/stats.minor;
+		cvh_poly = roi.getConvexHull();
+		convex_hull_roi = PolygonRoi([x for x in cvh_poly.xpoints], [y for y in cvh_poly.ypoints], PolygonRoi.POLYGON);
+		print("roi length = {}".format(roi.getLength()));
+		print("convex hull roi length = {}".format(convex_hull_roi.getLength()));
+		cell_spikiness_index = roi.getLength()/(pixel_width * convex_hull_roi.getLength());
 		cell_shapes.append(CellShapeResults(file_name=file_name, 
 									  cell_index=idx+1, 
 									  cell_area_um2=area,
 									  cell_perimeter_um=perimeter, 
 									  cell_aspect_ratio=aspect_ratio,
-									  cell_spikiness_index=None,
+									  cell_spikiness_index=cell_spikiness_index,
 									  cell_gfp_I_mean=I_mean,
 									  cell_gfp_I_sd=I_sd, 
 									  nuclear_centroids_in_cell=no_nuclei_centroids[idx], 
-									  nuclei_enclosed_in_cell=no_enclosed_nuclei[idx]));
+									  nuclei_enclosed_in_cell=no_enclosed_nuclei[idx], 
+									  roi=roi));
 	return cell_shapes;
 
 def generate_cell_masks(watershed_seeds_imp, intensity_channel_imp, find_edges=False):
