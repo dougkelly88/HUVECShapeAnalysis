@@ -268,7 +268,7 @@ def generate_cell_shape_results(rois, intensity_channel_imp, cal, file_name, no_
 	"""from list of rois, generate results describing the cell enclosed in each roi"""
 	pixel_width = 1.0 if cal is None else cal.pixelWidth;
 	if no_nuclei is None:
-		no_nuclei = [1 for _ in rois];
+		no_nuclei = [0 for _ in rois];
 	cell_shapes = [];
 	for idx, roi in enumerate(rois):
 		intensity_channel_imp.setRoi(roi);
@@ -359,7 +359,8 @@ def merge_incorrect_splits_and_get_centroids(imp, centroid_distance_limit=100, s
 
 def my_kill_borders(threshold_imp):
 	"""handle the tasks required before and after using MorphoLibJ's killBorders"""
-	IJ.run(threshold_imp, "Invert", "");
+	threshold_imp.killRoi();
+#	IJ.run(threshold_imp, "Invert", "");
 	IJ.run(threshold_imp, "Kill Borders", "");
 	ti_title = threshold_imp.getTitle();
 	threshold_imp.changes = False;
@@ -424,12 +425,11 @@ def get_nuclei_locations(nuc_imp, cal, distance_threshold_um=10, size_threshold_
 	size_limit_pix = size_threshold_um2//(cal.pixelWidth**2);
 	distance_limit_pix = distance_threshold_um//(cal.pixelWidth);
 	IJ.run(nuc_imp, "Make Binary", "method=Moments background=Dark calculate");
-	nuc_imp.show();
 	dilate_count = 2;
 	for _ in range(dilate_count):
 		IJ.run(nuc_imp, "Dilate", "");
 	IJ.run(nuc_imp, "Fill Holes", "");
-	nuc_imp = keep_blobs_bigger_than(nuc_imp, min_size_pix=math.ceil(float(size_limit_pix)/10));
+	nuc_imp = keep_blobs_bigger_than(nuc_imp, min_size_pix=math.ceil(float(size_limit_pix)/3));
 	IJ.run(nuc_imp, "Watershed", "");
 	ws_seed_imp, centroids = merge_incorrect_splits_and_get_centroids(nuc_imp, centroid_distance_limit=distance_limit_pix, size_limit=size_limit_pix);
 	return centroids;
@@ -453,7 +453,7 @@ def gfp_analysis(imp, file_name, output_folder):
 	ecad_imp = channel_imps[1];
 	ecad_imp.setTitle("E-cadherin");
 	nuc_imp = channel_imps[2];
-	nuclei_location = get_nuclei_locations(nuc_imp);
+	nuclei_locations = get_nuclei_locations(nuc_imp, cal, distance_threshold_um=10, size_threshold_um2=100);
 	IJ.run(threshold_imp, "Make Binary", "method=Otsu background=Dark calculate");
 	IJ.run(threshold_imp, "Fill Holes", "");
 	erode_count = 2;
@@ -462,7 +462,8 @@ def gfp_analysis(imp, file_name, output_folder):
 	threshold_imp = keep_blobs_bigger_than(threshold_imp, min_size_pix=1000);
 	threshold_imp = my_kill_borders(threshold_imp);
 	rois = generate_cell_rois(threshold_imp);
-	out_stats = generate_cell_shape_results(rois, gfp_imp, cal, file_name);
+	no_nuclei = [get_no_nuclei_in_cell(roi, nuclei_locations) for roi in rois];
+	out_stats = generate_cell_shape_results(rois, gfp_imp, cal, file_name, no_nuclei=no_nuclei);
 	print("Number of cells identified = {}".format(len(out_stats)));
 	threshold_imp.changes = False;
 	threshold_imp.close();
