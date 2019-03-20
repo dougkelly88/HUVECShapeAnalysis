@@ -1,4 +1,4 @@
-import os, math, csv
+import csv, json, math, os
 from datetime import datetime
 from ij import IJ, ImagePlus, Prefs
 from ij import WindowManager as WM
@@ -18,19 +18,104 @@ _totheminusone = u'\u02C9' + u'\u00B9';
 _sigma = u'\u03C3'
 
 class Parameters(object):
+	"""class to contain parameters for analysis runs"""
+	# constants
+	_persist_parameters_filename = "IJ_cell_shape_analysis_params.json"
+	_persist_parameters_folder = "IJ_cell_shape_analysis";
+	_version_string = "0.0.1";
+
 	def __init__(self, last_input_path=None, last_output_path=None, last_analysis_mode=None):
 		self.last_input_path = last_input_path;
 		self.last_output_path = last_output_path;
 		self.last_analysis_mode = last_analysis_mode if last_analysis_mode is not None else self.list_analysis_modes()[0];
+		self.__cellshapeparams__ = True;
+
+	def save_parameters_to_json(self, file_path):
+		"""save analysis parameters as a json"""
+		f = open(file_path, 'w');
+		try:
+			json.dump(self.__dict__, f, sort_keys=True);
+		except Exception as e:
+			print(e.message);
+			print("error saving {} to {}!".format(self, file_path));
+		finally:
+			f.close();
+
+	def populate_parameters_from_dict(self, dct):
+		"""from dictionary loaded from file, populate parameters"""
+		self.last_input_path = dct["last_input_path"];
+		self.last_output_path = dct["last_output_path"];
+		self.last_analysis_mode = dct["last_analysis_mode"];
+
+	def load_parameters_from_json(self, file_path):
+		"""load parameters from a JSON file"""
+		try:
+			f = open(file_path, 'r');
+			dct = json.loads(f.read());
+			if "__cellshapeparams__" in dct:
+				self.populate_parameters_from_dict(dct);
+			else:
+				raise ValueError("JSON file doesn't translate to cell shape analysis parameters")
+		except IOError:
+			print("IOError reading from JSON file");
+			return False;
+		except: 
+			return False;
+		finally:
+			f.close();
+		return True;
+
+	def load_last_params(self):
+		"""load parameters to allow persistence between analysis runs"""
+		success = True;
+		try:
+			temp_path = self.get_peristence_file_location();
+			if temp_path:
+				temp_params_path = os.path.join(temp_path, Parameters._persist_parameters_filename);
+				if os.path.isfile(temp_params_path):
+					success = self.load_parameters_from_json(temp_params_path);
+				else:
+					success = False;
+			else:
+				success = False;
+		except Exception as e:
+			print("Warning: Error loading previous settings, reverting to default...");
+			raise e;
+			return False;
+		if not success:
+			print("Warning: Error loading previous settings, reverting to default...");
+		return success;
 
 	def persist_parameters(self):
-		"""save analysis parameters to a json in appdata folder or equivalent"""
-		pass;
+		"""save parameters to allow persistence between analysis runs"""
+		temp_path = self.get_peristence_file_location();
+		if temp_path:
+			temp_params_path = os.path.join(temp_path, Parameters._persist_parameters_filename);
+			self.save_parameters_to_json(temp_params_path);
 
-	def save_as_json(self, dest_path):
-		"""save analysis parameters as a json"""
-		pass;
+	def get_peristence_file_location(self):
+		"""get platform-dependent location in which to save persistence data"""
+		try:
+			if IJ.isWindows():
+				# windows
+				temp_path = os.path.join(os.getenv('APPDATA'), Parameters._persist_parameters_folder);
+			elif IJ.isMacintosh():
+				# mac
+				temp_path = os.path.join(os.path.expanduser("~"), "Library", Parameters._persist_parameters_folder);
+			else:
+				print("currently only configured for Mac or Windows - this should be an easy fix for anyone running under Linux...");
+				raise NotImplementedError;
+			if not os.path.isdir(temp_path):
+				os.mkdir(temp_path);
+		except Exception as e:
+			print("Error: " + e.message);
+			return "";
+		return temp_path;
 
+	def __str__(self):
+		"""return string representation of the Parameters object"""
+		return str(self.__dict__);
+	
 	def list_analysis_modes(self):
 		return ["GFP intensity", "E-cadherin watershed", "Manual"];
 
@@ -169,6 +254,15 @@ def generate_cell_rois(seg_binary_imp):
 	roim.close();
 	return rois;
 	
+def save_cell_rois(rois, output_folder, filename):
+	"""save cell rois to a *.zip file"""
+	roim = RoiManager(False)
+	for roi in rois:
+		if roi is not None:
+			roim.addRoi(roi);
+	roim.runCommand("Save", os.path.join(output_folder, "{} cell rois.zip".format(filename)));
+	roim.close();
+
 def generate_cell_shape_results(rois, intensity_channel_imp, cal, file_name):
 	"""from list of rois, generate results describing the cell enclosed in each roi"""
 	pixel_width = 1.0 if cal is None else cal.pixelWidth;
@@ -182,7 +276,7 @@ def generate_cell_shape_results(rois, intensity_channel_imp, cal, file_name):
 		perimeter = roi.getLength();
 		aspect_ratio = stats.major/stats.minor;
 		cell_shapes.append(CellShapeResults(file_name=file_name, 
-									  cell_index=idx, 
+									  cell_index=idx+1, 
 									  cell_area_um2=area,
 									  cell_perimeter_um=perimeter, 
 									  cell_aspect_ratio=aspect_ratio,
@@ -346,9 +440,9 @@ def gfp_analysis(imp, file_name, output_folder):
 	print("Number of cells identified = {}".format(len(out_stats)));
 	threshold_imp.changes = False;
 	threshold_imp.close();
-	# save output image
-#	output_folder = "C:\\Users\\dougk\\Desktop\\dummy output"
+	# save output
 	save_qc_image(imp, rois, "{}_plus_overlay.tiff".format(os.path.join(output_folder, os.path.splitext(file_name)[0])));
+	save_cell_rois(rois, output_folder, os.path.splitext(file_name)[0])
 	imp.changes = False;
 	imp.close();
 	save_output_csv(out_stats, output_folder);
@@ -356,7 +450,6 @@ def gfp_analysis(imp, file_name, output_folder):
 
 def manual_analysis(imp, file_name, output_folder):
 	"""perform analysis based on manually drawn cells"""
-	print("performing manual shape analysis...");
 	cal = imp.getCalibration();
 	channel_imps = ChannelSplitter.split(imp);
 	gfp_imp = channel_imps[0];
@@ -379,9 +472,9 @@ def manual_analysis(imp, file_name, output_folder):
 		roim.close();
 		out_stats = generate_cell_shape_results(rois, gfp_imp, cal, file_name);
 		print("Number of cells identified = {}".format(len(out_stats)));
-		# save output image
-#		output_folder = "C:\\Users\\dougk\\Desktop\\dummy output"
+		# save output 
 		save_qc_image(imp, rois, "{}_plus_overlay.tiff".format(os.path.join(output_folder, os.path.splitext(file_name)[0])));
+		save_cell_rois(rois, output_folder, os.path.splitext(file_name)[0])
 		imp.changes = False;
 		imp.close();
 		save_output_csv(out_stats, output_folder);
@@ -391,18 +484,27 @@ def manual_analysis(imp, file_name, output_folder):
 def main():
 	# SETUP
 	Prefs.blackBackground = True;
+	params = Parameters();
+	params.load_last_params();
 	# select folders
-	dc = DirectoryChooser("choose root folder containing data for analysis");
+	if params.last_input_path is not None:
+		DirectoryChooser.setDefaultDirectory(params.last_input_path);
+	dc = DirectoryChooser("Choose root folder containing data for analysis");
 	input_folder = dc.getDirectory();
+	params.last_input_path = input_folder;
 	if input_folder is None:
 		raise KeyboardInterrupt("Run canceled");
+	if params.last_output_path is not None:
+		DirectoryChooser.setDefaultDirectory(os.path.dirname(params.last_output_path));
 	dc = DirectoryChooser("choose location to save output");
 	output_folder = dc.getDirectory();
 	timestamp = datetime.strftime(datetime.now(), '%Y-%m-%d %H-%M-%S');
 	output_folder = os.path.join(output_folder, (timestamp + ' output'));
+	params.last_output_path = output_folder;
 	os.mkdir(output_folder);
-	params = Parameters();
 	analysis_mode = choose_analysis_mode(params);
+	params.last_analysis_mode = analysis_mode;
+	params.persist_parameters();
 
 	# load  image(s):
 	files_lst = [f for f in os.listdir(input_folder) if os.path.splitext(f)[1]=='.tif'];
@@ -435,8 +537,10 @@ def main():
 		elif analysis_mode=="Manual":
 			out_stats = manual_analysis(imp, f, output_folder);
 		out_statses.extend(out_stats);
+		print("Current total number of cells identified: {}".format(len(out_statses)));
 		# get # nuclei per "cell"
-	WaitForUserDialog("Done", "Done!").show();
+	params.save_parameters_to_json(os.path.join(output_folder, "parameters used.json"));
+	WaitForUserDialog("Done", "Done, having analysed {} cells in total!".format(len(out_statses))).show();
 	print(out_statses);
 
 
