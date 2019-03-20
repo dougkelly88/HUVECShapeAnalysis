@@ -256,12 +256,13 @@ def generate_cell_rois(seg_binary_imp):
 	
 def save_cell_rois(rois, output_folder, filename):
 	"""save cell rois to a *.zip file"""
-	roim = RoiManager(False)
-	for roi in rois:
-		if roi is not None:
-			roim.addRoi(roi);
-	roim.runCommand("Save", os.path.join(output_folder, "{} cell rois.zip".format(filename)));
-	roim.close();
+	if len(rois)>0:
+		roim = RoiManager(False)
+		for roi in rois:
+			if roi is not None:
+				roim.addRoi(roi);
+		roim.runCommand("Save", os.path.join(output_folder, "{} cell rois.zip".format(filename)));
+		roim.close();
 
 def generate_cell_shape_results(rois, intensity_channel_imp, cal, file_name):
 	"""from list of rois, generate results describing the cell enclosed in each roi"""
@@ -371,15 +372,19 @@ def my_kill_borders(threshold_imp):
 def save_qc_image(imp, rois, output_path):
 	"""save rois overlaid on imp to output_path"""
 	imp.killRoi();
-	roim = RoiManager(False);
-	for roi in rois:
-		roim.addRoi(roi);
-	roim.runCommand("Show All with labels")
-	RGBStackConverter.convertToRGB(imp);
-	roim.moveRoisToOverlay(imp);
-	FileSaver(imp).saveAsTiff(output_path);
-	roim.runCommand("Show None");
-	roim.close();
+	if len(rois)>0:
+		roim = RoiManager(False);
+		for roi in rois:
+			roim.addRoi(roi);
+		roim.runCommand("Show All with labels")
+		RGBStackConverter.convertToRGB(imp);
+		roim.moveRoisToOverlay(imp);
+		FileSaver(imp).saveAsTiff(output_path);
+		roim.runCommand("Show None");
+		roim.close();
+	else:
+		FileSaver(imp).saveAsTiff(output_path);
+	return;
 
 def save_output_csv(cell_shape_results, output_folder):
 	"""generate an output csv on completion of each image rather than at the end of the run"""
@@ -455,29 +460,42 @@ def manual_analysis(imp, file_name, output_folder):
 	proceed = False;
 	roim = RoiManager();
 	roim.runCommand("Show all with labels");
-	dialog = NonBlockingGenericDialog("Perform manual segmentation");
-	dialog.setOKLabel("Proceed to next image...")
-	dialog.addMessage("Perform manual segmentation: ");
-	dialog.addMessage("Draw around cells and add to the region of interest manager (Ctrl+T)");
-	dialog.addMessage("You can see what you've added so far if you check \"show all\" on the ROI manager");
-	dialog.addMessage("Then press \"proceed to next image\" when all cells have been added");
-	dialog.showDialog();
-	if dialog.wasCanceled():
-		raise KeyboardInterrupt("Run canceled");
-	elif dialog.wasOKed():
-		rois = roim.getRoisAsArray();
-		roim.reset();
-		roim.close();
-		out_stats = generate_cell_shape_results(rois, gfp_imp, cal, file_name);
-		print("Number of cells identified = {}".format(len(out_stats)));
-		# save output 
-		save_qc_image(imp, rois, "{}_plus_overlay.tiff".format(os.path.join(output_folder, os.path.splitext(file_name)[0])));
-		save_cell_rois(rois, output_folder, os.path.splitext(file_name)[0])
-		imp.changes = False;
-		imp.close();
-		save_output_csv(out_stats, output_folder);
-		return out_stats;
-	return None;
+	while not proceed:
+		dialog = NonBlockingGenericDialog("Perform manual segmentation");
+		dialog.setOKLabel("Proceed to next image...")
+		dialog.addMessage("Perform manual segmentation: ");
+		dialog.addMessage("Draw around cells and add to the region of interest manager (Ctrl+T)");
+		dialog.addMessage("You can see what you've added so far if you check \"show all\" on the ROI manager");
+		dialog.addMessage("Then press \"proceed to next image\" when all cells have been added");
+		dialog.showDialog();
+		if dialog.wasCanceled():
+			raise KeyboardInterrupt("Run canceled");
+		elif dialog.wasOKed():
+			print("rois = {}".format(roim.getCount()));
+			if roim.getCount()==0:
+				rois = [];
+				confirm_dialog = GenericDialog("Continue?");
+				confirm_dialog.addMessage("No rois selected in this FOV. Are you sure you want to proceed?")
+				confirm_dialog.setOKLabel("Yes, proceed");
+				confirm_dialog.setCancelLabel("No, not yet");
+				confirm_dialog.showDialog();
+				if confirm_dialog.wasOKed():
+					proceed = True;
+			else:
+				print("proceeding...")
+				rois = roim.getRoisAsArray();
+				proceed = True;
+	roim.reset();
+	roim.close();
+	out_stats = generate_cell_shape_results(rois, gfp_imp, cal, file_name);
+	print("Number of cells identified = {}".format(len(out_stats)));
+	# save output 
+	save_qc_image(imp, rois, "{}_plus_overlay.tiff".format(os.path.join(output_folder, os.path.splitext(file_name)[0])));
+	save_cell_rois(rois, output_folder, os.path.splitext(file_name)[0])
+	imp.changes = False;
+	imp.close();
+	save_output_csv(out_stats, output_folder);
+	return out_stats;
 
 def main():
 	# setup
