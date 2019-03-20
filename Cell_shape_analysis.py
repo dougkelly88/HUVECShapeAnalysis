@@ -264,9 +264,11 @@ def save_cell_rois(rois, output_folder, filename):
 		roim.runCommand("Save", os.path.join(output_folder, "{} cell rois.zip".format(filename)));
 		roim.close();
 
-def generate_cell_shape_results(rois, intensity_channel_imp, cal, file_name):
+def generate_cell_shape_results(rois, intensity_channel_imp, cal, file_name, no_nuclei=None):
 	"""from list of rois, generate results describing the cell enclosed in each roi"""
 	pixel_width = 1.0 if cal is None else cal.pixelWidth;
+	if no_nuclei is None:
+		no_nuclei = [1 for _ in rois];
 	cell_shapes = [];
 	for idx, roi in enumerate(rois):
 		intensity_channel_imp.setRoi(roi);
@@ -284,7 +286,7 @@ def generate_cell_shape_results(rois, intensity_channel_imp, cal, file_name):
 									  cell_spikiness_index=None,
 									  cell_gfp_I_mean=I_mean,
 									  cell_gfp_I_sd=I_sd, 
-									  nuclei_in_cell=1));
+									  nuclei_in_cell=no_nuclei[idx]));
 	return cell_shapes;
 
 def generate_cell_masks(watershed_seeds_imp, intensity_channel_imp):
@@ -320,33 +322,35 @@ def merge_incorrect_splits_and_get_centroids(imp, centroid_distance_limit=100, s
 	roim.reset();
 	rt.reset();
 	pa.analyze(imp);
-	MyWaitForUser("paise", "pause post-merge incorrect splits particel analysis");
-	rt_xs = rt.getColumn(rt.getColumnIndex("X")).tolist();
-	rt_ys = rt.getColumn(rt.getColumnIndex("Y")).tolist();
-	centroids = [(x, y) for x, y in zip(rt_xs, rt_ys)];
-	print("centroids = {}".format(centroids))
+	MyWaitForUser("paise", "pause in merge_incorrect_splits: post-get particles smaller than size limit = {}".format(size_limit));
 	centroids_set = set();
-	for c in centroids:
-		ds = [math.sqrt((c[0] - cx)**2 + (c[1] - cy)**2) for (cx, cy) in centroids];
-		close_mask = [d < centroid_distance_limit for d in ds];
-		# if no other centroids are within centroid_distance_limit, add this centroid to the output set
-		# otherwise, add the average position of this centroid and those within centroid_distance_limit to the output set
-		centroids_set.add((sum([msk * b[0] for msk, b in zip(close_mask, centroids)])/sum(close_mask), 
-						sum([msk * b[1] for msk, b in zip(close_mask, centroids)])/sum(close_mask)));
+	if roim.getCount()>0:
+		rt_xs = rt.getColumn(rt.getColumnIndex("X")).tolist();
+		rt_ys = rt.getColumn(rt.getColumnIndex("Y")).tolist();
+		centroids = [(x, y) for x, y in zip(rt_xs, rt_ys)];
+		print("centroids = {}".format(centroids))
+		for c in centroids:
+			ds = [math.sqrt((c[0] - cx)**2 + (c[1] - cy)**2) for (cx, cy) in centroids];
+			close_mask = [d < centroid_distance_limit for d in ds];
+			# if no other centroids are within centroid_distance_limit, add this centroid to the output set
+			# otherwise, add the average position of this centroid and those within centroid_distance_limit to the output set
+			centroids_set.add((sum([msk * b[0] for msk, b in zip(close_mask, centroids)])/sum(close_mask), 
+							sum([msk * b[1] for msk, b in zip(close_mask, centroids)])/sum(close_mask)));
 	roim.reset();
 	rt.reset();
 	pa = ParticleAnalyzer(ParticleAnalyzer.ADD_TO_MANAGER, ParticleAnalyzer.AREA | ParticleAnalyzer.SLICE | ParticleAnalyzer.CENTROID, rt, size_limit, mxsz);
 	pa.setRoiManager(roim);
 	pa.analyze(imp);
-	MyWaitForUser("paise", "pause post-merge incorrect splits particel analysis 2");
-	if rt.columnExists("X"):
-		rt_xs = rt.getColumn(rt.getColumnIndex("X")).tolist();
-		rt_ys = rt.getColumn(rt.getColumnIndex("Y")).tolist();
-	centroids = [(x, y) for x, y in zip(rt_xs, rt_ys)];
-	for c in centroids:
-		centroids_set.add(c);
+	MyWaitForUser("paise", "pause in merge_incorrect_splits: post-get centroid for nuclei bigger than size limit = {}".format(size_limit));
+	if roim.getCount()>0:
+		if rt.columnExists("X"):
+			rt_xs = rt.getColumn(rt.getColumnIndex("X")).tolist();
+			rt_ys = rt.getColumn(rt.getColumnIndex("Y")).tolist();
+		centroids = [(x, y) for x, y in zip(rt_xs, rt_ys)];
+		for c in centroids:
+			centroids_set.add(c);
 	centroids = list(centroids_set);
-	cal = imp.getCalibration();
+#	cal = imp.getCalibration();
 	centroids = [(c[0] / cal.pixelWidth, c[1] / cal.pixelHeight) for c in centroids];
 	print("new number of nuclei identified = {}".format(len(centroids)));
 	roim.reset();
@@ -357,7 +361,7 @@ def merge_incorrect_splits_and_get_centroids(imp, centroid_distance_limit=100, s
 		IJ.run(out_imp, "Set...", "value={} slice".format(idx+1));
 	imp.changes = False;
 	#imp.close();
-	return out_imp;
+	return out_imp, centroids;
 
 def my_kill_borders(threshold_imp):
 	"""handle the tasks required before and after using MorphoLibJ's killBorders"""
@@ -420,6 +424,42 @@ def save_output_csv(cell_shape_results, output_folder):
 		f.close();
 	return;
 
+def get_nuclei_locations(nuc_imp, cal, distance_threshold_um=10, size_threshold_um2=50):
+	"""get centroids of nuclei. blobs closer than distance_threshold_um and smaller than size_threshold_um2 are merged"""
+	print("cal.pixelWidth = {}".format(cal.pixelWidth));
+	size_limit_pix = size_threshold_um2//(cal.pixelWidth**2);
+	distance_limit_pix = distance_threshold_um//(cal.pixelWidth);
+	IJ.run(nuc_imp, "Make Binary", "method=Moments background=Dark calculate");
+	nuc_imp.show();
+	dilate_count = 2;
+	for _ in range(dilate_count):
+		IJ.run(nuc_imp, "Dilate", "");
+	IJ.run(nuc_imp, "Fill Holes", "");
+	MyWaitForUser("pause", "post-threshold, dilate, fill holes")
+	nuc_imp = keep_blobs_bigger_than(nuc_imp, min_size_pix=math.ceil(float(size_limit_pix)/10));
+	MyWaitForUser("pause", "post-size filt1")
+	IJ.run(nuc_imp, "Watershed", "");
+	nuc_imp.updateAndDraw();
+	MyWaitForUser("pause", "post-watershed")
+#	nuc_imp = keep_blobs_bigger_than(nuc_imp, min_size_pix=1000);
+#	nuc_imp.updateAndDraw();
+#	MyWaitForUser("pause", "post-size filt2")
+	
+	print("size_limit_pix = {}; distance_limit_pix = {}".format(size_limit_pix, distance_limit_pix));
+	ws_seed_imp, centroids = merge_incorrect_splits_and_get_centroids(nuc_imp, centroid_distance_limit=distance_limit_pix, size_limit=size_limit_pix);
+	ws_seed_imp.show();
+	MyWaitForUser("pause", "post-merge and get centroids");
+	return centroids;
+
+def get_no_nuclei_in_cell(roi, nuclei_centroids):
+	"""for a given cell roi and list of nuclei centroids from the image, return how many nuclei lie within the cell"""
+	no_nuclei = 0;
+	for c in nuclei_centroids:
+		print("C = {}".format(c));
+		if roi.contains(int(c[0]), int(c[1])):
+			no_nuclei += 1;
+	return no_nuclei;
+
 def gfp_analysis(imp, file_name, output_folder):
 	"""perform analysis based on gfp intensity thresholding"""
 	cal = imp.getCalibration();
@@ -431,6 +471,7 @@ def gfp_analysis(imp, file_name, output_folder):
 	ecad_imp = channel_imps[1];
 	ecad_imp.setTitle("E-cadherin");
 	nuc_imp = channel_imps[2];
+	nuclei_location = get_nuclei_locations(nuc_imp);
 	IJ.run(threshold_imp, "Make Binary", "method=Otsu background=Dark calculate");
 	IJ.run(threshold_imp, "Fill Holes", "");
 	erode_count = 2;
@@ -456,6 +497,8 @@ def manual_analysis(imp, file_name, output_folder):
 	cal = imp.getCalibration();
 	channel_imps = ChannelSplitter.split(imp);
 	gfp_imp = channel_imps[0];
+	nuc_imp = channel_imps[2];
+	nuclei_locations = get_nuclei_locations(nuc_imp, cal, distance_threshold_um=10, size_threshold_um2=100);
 	IJ.setTool("freehand");
 	proceed = False;
 	roim = RoiManager();
@@ -487,7 +530,8 @@ def manual_analysis(imp, file_name, output_folder):
 				proceed = True;
 	roim.reset();
 	roim.close();
-	out_stats = generate_cell_shape_results(rois, gfp_imp, cal, file_name);
+	no_nuclei = [get_no_nuclei_in_cell(roi, nuclei_locations) for roi in rois];
+	out_stats = generate_cell_shape_results(rois, gfp_imp, cal, file_name, no_nuclei=no_nuclei);
 	print("Number of cells identified = {}".format(len(out_stats)));
 	# save output 
 	save_qc_image(imp, rois, "{}_plus_overlay.tiff".format(os.path.join(output_folder, os.path.splitext(file_name)[0])));
