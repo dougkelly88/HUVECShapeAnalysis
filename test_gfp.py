@@ -1,4 +1,5 @@
 import os, math, csv
+from datetime import datetime
 from ij import IJ, ImagePlus, Prefs
 from ij import WindowManager as WM
 from ij.io import DirectoryChooser, FileSaver
@@ -322,7 +323,7 @@ def save_output_csv(cell_shape_results, output_folder):
 	return;
 	
 
-def gfp_analysis(imp, file_name):
+def gfp_analysis(imp, file_name, output_folder):
 	"""perform analysis based on gfp intensity thresholding"""
 	cal = imp.getCalibration();
 	channel_imps = ChannelSplitter.split(imp);
@@ -346,14 +347,14 @@ def gfp_analysis(imp, file_name):
 	threshold_imp.changes = False;
 	threshold_imp.close();
 	# save output image
-	output_folder = "C:\\Users\\dougk\\Desktop\\dummy output"
+#	output_folder = "C:\\Users\\dougk\\Desktop\\dummy output"
 	save_qc_image(imp, rois, "{}_plus_overlay.tiff".format(os.path.join(output_folder, os.path.splitext(file_name)[0])));
 	imp.changes = False;
 	imp.close();
 	save_output_csv(out_stats, output_folder);
 	return out_stats;
 
-def manual_analysis(imp, file_name):
+def manual_analysis(imp, file_name, output_folder):
 	"""perform analysis based on manually drawn cells"""
 	print("performing manual shape analysis...");
 	cal = imp.getCalibration();
@@ -379,7 +380,7 @@ def manual_analysis(imp, file_name):
 		out_stats = generate_cell_shape_results(rois, gfp_imp, cal, file_name);
 		print("Number of cells identified = {}".format(len(out_stats)));
 		# save output image
-		output_folder = "C:\\Users\\dougk\\Desktop\\dummy output"
+#		output_folder = "C:\\Users\\dougk\\Desktop\\dummy output"
 		save_qc_image(imp, rois, "{}_plus_overlay.tiff".format(os.path.join(output_folder, os.path.splitext(file_name)[0])));
 		imp.changes = False;
 		imp.close();
@@ -395,11 +396,11 @@ def main():
 	input_folder = dc.getDirectory();
 	if input_folder is None:
 		raise KeyboardInterrupt("Run canceled");
-	#dc = DirectoryChooser("choose location to save output");
-	#output_folder = dc.getDirectory();
-	#timestamp = datetime.strftime(datetime.now(), '%Y-%m-%d %H-%M-%S');
-	#output_folder = os.path.join(output_folder, (timestamp + ' output'));
-	#os.mkdir(output_folder);
+	dc = DirectoryChooser("choose location to save output");
+	output_folder = dc.getDirectory();
+	timestamp = datetime.strftime(datetime.now(), '%Y-%m-%d %H-%M-%S');
+	output_folder = os.path.join(output_folder, (timestamp + ' output'));
+	os.mkdir(output_folder);
 	params = Parameters();
 	analysis_mode = choose_analysis_mode(params);
 
@@ -430,9 +431,9 @@ def main():
 		imp.setCalibration(cal);
 	
 		if analysis_mode=="GFP intensity":
-			out_stats = gfp_analysis(imp, f);
+			out_stats = gfp_analysis(imp, f, output_folder);
 		elif analysis_mode=="Manual":
-			out_stats = manual_analysis(imp, f);
+			out_stats = manual_analysis(imp, f, output_folder);
 		out_statses.extend(out_stats);
 		# get # nuclei per "cell"
 	WaitForUserDialog("Done", "Done!").show();
