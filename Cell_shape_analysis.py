@@ -130,7 +130,8 @@ class CellShapeResults(object):
 					cell_aspect_ratio=None,
 					cell_gfp_I_mean=None,
 					cell_gfp_I_sd=None, 
-					nuclei_in_cell=1
+					nuclear_centroids_in_cell=0, 
+					nuclei_enclosed_in_cell=0
 					):
 		self.file_name = file_name;
 		self.cell_index = cell_index;
@@ -140,7 +141,8 @@ class CellShapeResults(object):
 		self.cell_aspect_ratio = cell_aspect_ratio;
 		self.cell_gfp_I_mean = cell_gfp_I_mean;
 		self.cell_gfp_I_sd = cell_gfp_I_sd;
-		self.nuclei_in_cell = nuclei_in_cell;
+		self.nuclear_centroids_in_cell = nuclear_centroids_in_cell;
+		self.nuclei_enclosed_in_cell = nuclei_enclosed_in_cell;
 
 	def calculate_cell_spikiness_index(self, cell_area_um2, cell_perimeter_um):
 		"""calculate cell spikiness index, i.e. deviation from circular cell"""
@@ -264,11 +266,13 @@ def save_cell_rois(rois, output_folder, filename):
 		roim.runCommand("Save", os.path.join(output_folder, "{} cell rois.zip".format(filename)));
 		roim.close();
 
-def generate_cell_shape_results(rois, intensity_channel_imp, cal, file_name, no_nuclei=None):
+def generate_cell_shape_results(rois, intensity_channel_imp, cal, file_name, no_nuclei_centroids=None, no_enclosed_nuclei=None):
 	"""from list of rois, generate results describing the cell enclosed in each roi"""
 	pixel_width = 1.0 if cal is None else cal.pixelWidth;
-	if no_nuclei is None:
-		no_nuclei = [0 for _ in rois];
+	if no_nuclei_centroids is None:
+		no_nuclei_centroids = [0 for _ in rois];
+	if no_enclosed_nuclei is None:
+		no_enclosed_nuclei = [0 for _ in rois];
 	cell_shapes = [];
 	for idx, roi in enumerate(rois):
 		intensity_channel_imp.setRoi(roi);
@@ -286,13 +290,18 @@ def generate_cell_shape_results(rois, intensity_channel_imp, cal, file_name, no_
 									  cell_spikiness_index=None,
 									  cell_gfp_I_mean=I_mean,
 									  cell_gfp_I_sd=I_sd, 
-									  nuclei_in_cell=no_nuclei[idx]));
+									  nuclear_centroids_in_cell=no_nuclei_centroids[idx], 
+									  nuclei_enclosed_in_cell=no_enclosed_nuclei[idx]));
 	return cell_shapes;
 
-def generate_cell_masks(watershed_seeds_imp, intensity_channel_imp):
+def generate_cell_masks(watershed_seeds_imp, intensity_channel_imp, find_edges=False):
 	"""perform marker-driven watershed on image in intensity_channel_imp"""
-	IJ.run(imp, "Marker-controlled Watershed", "input={} marker=Nuclei mask=None binary calculate use".format(os.path.splitext(intensity_channel_imp.getTitle())[0]));
-	ws_title =  "{}-watershed".format(intensity_channel_imp.getTitle());
+	title = os.path.splitext(intensity_channel_imp.getTitle())[0];
+	print("title = {}".format(title));
+	if find_edges:
+		IJ.run(intensity_channel_imp, "Find Edges", "");
+	IJ.run(intensity_channel_imp, "Marker-controlled Watershed", "input={} marker=Nuclei mask=None binary calculate use".format(title));
+	ws_title =  "{}-watershed.tif".format(title);
 	watershed_imp = WM.getImage(ws_title);
 	IJ.setRawThreshold(watershed_imp, 1, watershed_imp.getProcessor().maxValue(), "Red");	
 	binary_cells_imp = ImagePlus("thresholded", watershed_imp.createThresholdMask());
@@ -312,7 +321,7 @@ def merge_incorrect_splits_and_get_centroids(imp, centroid_distance_limit=100, s
 	IJ.run(out_imp, "Set...", "value=0 slice");
 	cal = imp.getCalibration();
 	mxsz = imp.width * cal.pixelWidth * imp.height * cal.pixelHeight;
-	roim = RoiManager();
+	roim = RoiManager(False);
 	pa = ParticleAnalyzer(ParticleAnalyzer.ADD_TO_MANAGER, ParticleAnalyzer.AREA | ParticleAnalyzer.SLICE | ParticleAnalyzer.CENTROID, rt, 0, size_limit);
 	pa.setRoiManager(roim);
 	roim.reset();
@@ -350,7 +359,7 @@ def merge_incorrect_splits_and_get_centroids(imp, centroid_distance_limit=100, s
 	roim.reset();
 	roim.close();
 	for idx, c in enumerate(centroids):
-		roi = OvalRoi(c[0], c[1], 10, 10);
+		roi = OvalRoi(c[0], c[1], 1, 1);
 		out_imp.setRoi(roi);
 		IJ.run(out_imp, "Set...", "value={} slice".format(idx+1));
 	#imp.changes = False;
@@ -402,7 +411,8 @@ def save_output_csv(cell_shape_results, output_folder):
 					"Cell spikiness index", 
 					"GFP channel mean", 
 					"GFP channel SD", 
-					"# nuclei per cell"]);
+					"# nuclear centroids per cell", 
+					"# nuclei fully enclosed per cell"]);
 		for csr in cell_shape_results:
 			writer.writerow([csr.file_name, 
 								csr.cell_index, 
@@ -412,7 +422,8 @@ def save_output_csv(cell_shape_results, output_folder):
 								csr.cell_spikiness_index, 
 								csr.cell_gfp_I_mean, 
 								csr.cell_gfp_I_sd, 
-								csr.nuclei_in_cell]);
+								csr.nuclear_centroids_in_cell, 
+								csr.nuclei_enclosed_in_cell]);
 	except IOError as e:
 		print("problem saving, {}".format(e));
 	finally:
@@ -430,17 +441,88 @@ def get_nuclei_locations(nuc_imp, cal, distance_threshold_um=10, size_threshold_
 		IJ.run(nuc_imp, "Dilate", "");
 	IJ.run(nuc_imp, "Fill Holes", "");
 	nuc_imp = keep_blobs_bigger_than(nuc_imp, min_size_pix=math.ceil(float(size_limit_pix)/3));
+	nuc_imp.killRoi();
+	pre_watershed_nuc_imp = Duplicator().run(nuc_imp);
 	IJ.run(nuc_imp, "Watershed", "");
 	ws_seed_imp, centroids = merge_incorrect_splits_and_get_centroids(nuc_imp, centroid_distance_limit=distance_limit_pix, size_limit=size_limit_pix);
-	return centroids;
+	ws_seed_imp.show();
+	pre_watershed_nuc_imp.show();
+	full_nuclei_imp = generate_cell_masks(ws_seed_imp, pre_watershed_nuc_imp, find_edges=True);
+	return centroids, full_nuclei_imp;
 
 def get_no_nuclei_in_cell(roi, nuclei_centroids):
-	"""for a given cell roi and list of nuclei centroids from the image, return how many nuclei lie within the cell"""
+	"""for a given cell roi and list of nuclei centroids from the image, return how many nuclear centroids lie within the cell"""
 	no_nuclei = 0;
 	for c in nuclei_centroids:
 		if roi.contains(int(c[0]), int(c[1])):
 			no_nuclei += 1;
 	return no_nuclei;
+
+def get_no_nuclei_fully_enclosed(roi, full_nuclei_imp, overlap_threshold=0.65):
+	"""for a given cell roi and ImagePlus with binary nuclei, return how many nuclei lie ENTIRELY within the cell"""
+	bbox = roi.getBounds();
+	print("original roi bbox = {}".format(bbox));
+	print("original roi = {}".format(roi));
+	full_nuclei_imp.setRoi(roi);
+	cropped_nuc_imp = full_nuclei_imp.crop();
+	cropped_nuc_imp.show();
+	roi.setLocation(0, 0);
+	cropped_nuc_imp.setRoi(roi);
+	print("new roi bbox = {}".format(roi.getBounds()));
+	print("new roi = {}".format(roi));
+	MyWaitForUser("paise", "show cropped nuclei image");
+	cropped_nuc_imp.killRoi();
+	roim = RoiManager(False);
+	mxsz = cropped_nuc_imp.getWidth() * cropped_nuc_imp.getHeight();
+	print(mxsz);
+	pa = ParticleAnalyzer(ParticleAnalyzer.ADD_TO_MANAGER, ParticleAnalyzer.AREA | ParticleAnalyzer.SLICE | ParticleAnalyzer.CENTROID, None, 0, mxsz);
+	pa.setRoiManager(roim);
+	pa.analyze(cropped_nuc_imp);
+	print("cropped nuc imp size = {}x{}".format(cropped_nuc_imp.getWidth(), cropped_nuc_imp.getHeight()));
+	cell_imp = IJ.createImage("Cell binary", 
+						cropped_nuc_imp.getWidth(), 
+						cropped_nuc_imp.getHeight(), 
+						1, 
+						8);
+	IJ.run(cell_imp, "Select All", "");
+	IJ.run(cell_imp, "Set...", "value=0 slice");
+	cell_imp.show();
+	cell_imp.setRoi(roi);
+	IJ.run(cell_imp, "Set...", "value=255 slice");
+	MyWaitForUser("paise", "show cropped cell image");
+	no_enclosed_nuclei = 0;
+	for idx, nuc_roi in enumerate(roim.getRoisAsArray()):
+		print("Checking nucleus {} of {}".format(idx+1, roim.getCount()));
+		test_imp = Duplicator().run(cell_imp);
+		test_imp.show();
+		test_imp.setRoi(nuc_roi);
+		MyWaitForUser("paise", "show test image after adding nuclear roi");
+		IJ.run(test_imp, "Set...", "value=255 slice");
+		MyWaitForUser("paise", "show test image after OR operation");
+		test_imp.killRoi();
+		IJ.run(test_imp, "Create Selection", "");
+		IJ.run(test_imp, "Make Inverse", "");
+		MyWaitForUser("paise", "show OR cell/nucleus image with selection made...");
+		test_roi = test_imp.getRoi();
+		test_roi_stats = test_roi.getStatistics();
+		cell_roi_stats = roi.getStatistics();
+		nuc_roi_stats = nuc_roi.getStatistics();
+		print("nucleus area = {}".format(nuc_roi_stats.area));
+		print("cell_roi area = {}".format(cell_roi_stats.area));
+		print("test_roi area = {}".format(test_roi_stats.area));
+		if test_roi_stats.area < (cell_roi_stats.area + (1-overlap_threshold) * nuc_roi_stats.area): # i.e. if more than (100*overlap_threshold)% of nucleus is inside cell...
+			no_enclosed_nuclei += 1;
+			print("adding an enclosed nucleus!!");
+		else:
+			print("nucleus not added!");
+		test_imp.changes = False;
+		test_imp.close();
+	roi.setLocation(bbox.getX(), bbox.getY());
+	cropped_nuc_imp.changes = False;
+	cropped_nuc_imp.close();
+	cell_imp.changes = False;
+	cell_imp.close();
+	return no_enclosed_nuclei;
 
 def gfp_analysis(imp, file_name, output_folder):
 	"""perform analysis based on gfp intensity thresholding"""
@@ -453,17 +535,26 @@ def gfp_analysis(imp, file_name, output_folder):
 	ecad_imp = channel_imps[1];
 	ecad_imp.setTitle("E-cadherin");
 	nuc_imp = channel_imps[2];
-	nuclei_locations = get_nuclei_locations(nuc_imp, cal, distance_threshold_um=10, size_threshold_um2=100);
+	nuclei_locations, full_nuclei_imp = get_nuclei_locations(nuc_imp, cal, distance_threshold_um=10, size_threshold_um2=100);
 	IJ.run(threshold_imp, "Make Binary", "method=Otsu background=Dark calculate");
 	IJ.run(threshold_imp, "Fill Holes", "");
 	erode_count = 2;
 	for _ in range(erode_count):
 		IJ.run(threshold_imp, "Erode", "");
+	for _ in range(erode_count):
+		IJ.run(threshold_imp, "Dilate", "");
 	threshold_imp = keep_blobs_bigger_than(threshold_imp, min_size_pix=1000);
 	threshold_imp = my_kill_borders(threshold_imp);
 	rois = generate_cell_rois(threshold_imp);
-	no_nuclei = [get_no_nuclei_in_cell(roi, nuclei_locations) for roi in rois];
-	out_stats = generate_cell_shape_results(rois, gfp_imp, cal, file_name, no_nuclei=no_nuclei);
+	no_nuclei_centroids = [get_no_nuclei_in_cell(roi, nuclei_locations) for roi in rois];
+	no_enclosed_nuclei = [get_no_nuclei_fully_enclosed(roi, full_nuclei_imp) for roi in rois];
+	print("no_nuclei_enclosed = {}".format(no_enclosed_nuclei));
+	out_stats = generate_cell_shape_results(rois, 
+										 gfp_imp, 
+										 cal, 
+										 file_name, 
+										 no_nuclei_centroids=no_nuclei_centroids,
+										 no_enclosed_nuclei=no_enclosed_nuclei);
 	print("Number of cells identified = {}".format(len(out_stats)));
 	threshold_imp.changes = False;
 	threshold_imp.close();
@@ -481,7 +572,7 @@ def manual_analysis(imp, file_name, output_folder):
 	channel_imps = ChannelSplitter.split(imp);
 	gfp_imp = channel_imps[0];
 	nuc_imp = channel_imps[2];
-	nuclei_locations = get_nuclei_locations(nuc_imp, cal, distance_threshold_um=10, size_threshold_um2=100);
+	nuclei_locations, full_nuclei_imp = get_nuclei_locations(nuc_imp, cal, distance_threshold_um=10, size_threshold_um2=100);
 	IJ.setTool("freehand");
 	proceed = False;
 	roim = RoiManager();
@@ -513,8 +604,15 @@ def manual_analysis(imp, file_name, output_folder):
 				proceed = True;
 	roim.reset();
 	roim.close();
-	no_nuclei = [get_no_nuclei_in_cell(roi, nuclei_locations) for roi in rois];
-	out_stats = generate_cell_shape_results(rois, gfp_imp, cal, file_name, no_nuclei=no_nuclei);
+	no_nuclei_centroids = [get_no_nuclei_in_cell(roi, nuclei_locations) for roi in rois];
+	no_enclosed_nuclei = [get_no_nuclei_fully_enclosed(roi, full_nuclei_imp) for roi in rois];
+	print("no_nuclei_enclosed = {}".format(no_enclosed_nuclei));
+	out_stats = generate_cell_shape_results(rois, 
+										 gfp_imp, 
+										 cal, 
+										 file_name, 
+										 no_nuclei_centroids=no_nuclei_centroids,
+										 no_enclosed_nuclei=no_enclosed_nuclei);
 	print("Number of cells identified = {}".format(len(out_stats)));
 	# save output 
 	save_qc_image(imp, rois, "{}_plus_overlay.tiff".format(os.path.join(output_folder, os.path.splitext(file_name)[0])));
@@ -590,6 +688,3 @@ def main():
 # This enables us to stop the script by just calling return.
 if __name__ in ['__builtin__','__main__']:
     main();
-
-	
-	
