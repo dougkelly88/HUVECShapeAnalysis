@@ -510,17 +510,17 @@ def get_no_nuclei_fully_enclosed(roi, full_nuclei_imp, overlap_threshold=0.65):
 	cell_imp.close();
 	return no_enclosed_nuclei;
 
-def gfp_analysis(imp, file_name, output_folder):
+def gfp_analysis(imp, file_name, output_folder, gfp_channel_number=1, dapi_channel_number=3, red_channel_number=2):
 	"""perform analysis based on gfp intensity thresholding"""
 	cal = imp.getCalibration();
 	channel_imps = ChannelSplitter.split(imp);
-	gfp_imp = channel_imps[0];
+	gfp_imp = channel_imps[gfp_channel_number-1];
 	gfp_imp.setTitle("GFP");
 	threshold_imp = Duplicator().run(gfp_imp);
 	threshold_imp.setTitle("GFP_threshold_imp");
-	ecad_imp = channel_imps[1];
+	ecad_imp = channel_imps[red_channel_number-1];
 	ecad_imp.setTitle("E-cadherin");
-	nuc_imp = channel_imps[2];
+	nuc_imp = channel_imps[dapi_channel_number-1];
 	nuclei_locations, full_nuclei_imp = get_nuclei_locations(nuc_imp, cal, distance_threshold_um=10, size_threshold_um2=100);
 	full_nuclei_imp.hide();
 	IJ.run(threshold_imp, "Make Binary", "method=Otsu background=Dark calculate");
@@ -554,12 +554,12 @@ def gfp_analysis(imp, file_name, output_folder):
 	save_output_csv(out_stats, output_folder);
 	return out_stats;
 
-def manual_analysis(imp, file_name, output_folder):
+def manual_analysis(imp, file_name, output_folder, gfp_channel_number=1, dapi_channel_number=3, red_channel_number=2):
 	"""perform analysis based on manually drawn cells"""
 	cal = imp.getCalibration();
 	channel_imps = ChannelSplitter.split(imp);
-	gfp_imp = channel_imps[0];
-	nuc_imp = channel_imps[2];
+	gfp_imp = channel_imps[gfp_channel_number-1];
+	nuc_imp = channel_imps[dapi_channel_number-1];
 	nuclei_locations, full_nuclei_imp = get_nuclei_locations(nuc_imp, cal, distance_threshold_um=10, size_threshold_um2=100);
 	full_nuclei_imp.hide();
 	IJ.setTool("freehand");
@@ -642,17 +642,29 @@ def main():
 		print("Working on image {}...".format(os.path.splitext(f)[0]))
 		imp = IJ.openImage(os.path.join(input_folder, f));
 		metadata = import_iq3_metadata(os.path.join(input_folder, os.path.splitext(f)[0] + '.txt'));
-		imp = HyperStackConverter.toHyperStack(imp, 3, imp.getNSlices()//3, 1, "Color");
+		n_channels = int(metadata['n_channels']);
+		gfp_channel_number = [("488" in ch) for ch in metadata['channel_list']].index(True) + 1 if any([("488" in ch) for ch in metadata['channel_list']]) else None;
+		dapi_channel_number = [("405" in ch) for ch in metadata['channel_list']].index(True) + 1 if any([("405" in ch) for ch in metadata['channel_list']]) else None;
+		red_channel_number = [("561" in ch) for ch in metadata['channel_list']].index(True) + 1 if any([("561" in ch) for ch in metadata['channel_list']]) else None;
+		imp = HyperStackConverter.toHyperStack(imp, n_channels, imp.getNSlices()//n_channels, 1, "Color");
 		imp = ZProjector.run(imp,"max");
-		imp.setC(3);
-		IJ.run(imp, "Blue", "");
-		IJ.run(imp, "Enhance Contrast", "saturated=0.35");
-		imp.setC(2);
-		IJ.run(imp, "Red", "");
-		IJ.run(imp, "Enhance Contrast", "saturated=0.35");
-		imp.setC(1);
-		IJ.run(imp, "Green", "");
-		IJ.run(imp, "Enhance Contrast", "saturated=0.35");
+		if dapi_channel_number is not None:
+			imp.setC(dapi_channel_number);
+			IJ.run(imp, "Blue", "");
+			IJ.run(imp, "Enhance Contrast", "saturated=0.35");
+		else:
+			raise NotImplementedError;
+		if red_channel_number is not None:
+			imp.setC(red_channel_number);
+			IJ.run(imp, "Red", "");
+			IJ.run(imp, "Enhance Contrast", "saturated=0.35");
+		if gfp_channel_number is not None:
+			imp.setC(gfp_channel_number);
+			IJ.run(imp, "Green", "");
+			IJ.run(imp, "Enhance Contrast", "saturated=0.35");
+			imp.setC(gfp_channel_number);
+		else:
+			raise NotImplementedError;
 		imp.show();
 		imp.setDisplayMode(IJ.COMPOSITE);
 		cal = imp.getCalibration();
@@ -662,9 +674,9 @@ def main():
 		imp.setCalibration(cal);
 	
 		if analysis_mode=="GFP intensity":
-			out_stats = gfp_analysis(imp, f, output_folder);
+			out_stats = gfp_analysis(imp, f, output_folder, gfp_channel_number=gfp_channel_number, dapi_channel_number=dapi_channel_number);
 		elif analysis_mode=="Manual":
-			out_stats = manual_analysis(imp, f, output_folder);
+			out_stats = manual_analysis(imp, f, output_folder, gfp_channel_number=gfp_channel_number, dapi_channel_number=dapi_channel_number);
 		out_statses.extend(out_stats);
 		print("Current total number of cells identified: {}".format(len(out_statses)));
 		# get # nuclei per "cell"
