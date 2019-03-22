@@ -9,6 +9,7 @@ from ij.measure import ResultsTable
 from ij.plugin.filter import ParticleAnalyzer
 from ij.gui import WaitForUserDialog, PointRoi, OvalRoi, NonBlockingGenericDialog, GenericDialog, PolygonRoi
 from ij.measure import Measurements
+from ij.process import AutoThresholder
 
 # string definitions
 _um = u'\u00B5m';
@@ -24,10 +25,11 @@ class Parameters(object):
 	_persist_parameters_folder = "IJ_cell_shape_analysis";
 	_version_string = "0.0.1";
 
-	def __init__(self, last_input_path=None, last_output_path=None, last_analysis_mode=None):
+	def __init__(self, last_input_path=None, last_output_path=None, last_analysis_mode=None, last_threshold_method='Otsu'):
 		self.last_input_path = last_input_path;
 		self.last_output_path = last_output_path;
 		self.last_analysis_mode = last_analysis_mode if last_analysis_mode is not None else self.list_analysis_modes()[0];
+		self.last_threshold_method = last_threshold_method;
 		self.__cellshapeparams__ = True;
 
 	def save_parameters_to_json(self, file_path):
@@ -46,6 +48,7 @@ class Parameters(object):
 		self.last_input_path = dct["last_input_path"];
 		self.last_output_path = dct["last_output_path"];
 		self.last_analysis_mode = dct["last_analysis_mode"];
+		self.last_threshold_method = dct["last_threshold_method"]
 
 	def load_parameters_from_json(self, file_path):
 		"""load parameters from a JSON file"""
@@ -153,11 +156,12 @@ def choose_analysis_mode(params):
 	"""present UI for choosing how cells should be identified"""
 	dialog = GenericDialog("Analysis methods");
 	dialog.addMessage("Please choose how cell shape anlaysis should proceed:");
-	dialog.addChoice("Analysis mode", params.list_analysis_modes(), params.last_analysis_mode);
+	dialog.addChoice("Analysis mode: ", params.list_analysis_modes(), params.last_analysis_mode);
+	dialog.addChoice("GFP segmentation method: ", AutoThresholder.getMethods(), params.last_threshold_method);
 	dialog.showDialog();
 	if dialog.wasCanceled():
 		raise KeyboardInterrupt("Run canceled");
-	return dialog.getNextChoice();	
+	return dialog.getNextChoice(), dialog.getNextChoice();	
 
 def MyWaitForUser(title, message):
 	"""non-modal dialog with option to cancel the analysis"""
@@ -511,6 +515,7 @@ def get_no_nuclei_fully_enclosed(roi, full_nuclei_imp, overlap_threshold=0.65):
 	return no_enclosed_nuclei;
 
 def gfp_analysis(imp, file_name, output_folder, gfp_channel_number=1, dapi_channel_number=3, red_channel_number=2):
+def gfp_analysis(imp, file_name, output_folder, gfp_channel_number=1, dapi_channel_number=3, red_channel_number=2, threshold_method='Otsu'):
 	"""perform analysis based on gfp intensity thresholding"""
 	cal = imp.getCalibration();
 	channel_imps = ChannelSplitter.split(imp);
@@ -523,7 +528,7 @@ def gfp_analysis(imp, file_name, output_folder, gfp_channel_number=1, dapi_chann
 	nuc_imp = channel_imps[dapi_channel_number-1];
 	nuclei_locations, full_nuclei_imp = get_nuclei_locations(nuc_imp, cal, distance_threshold_um=10, size_threshold_um2=100);
 	full_nuclei_imp.hide();
-	IJ.run(threshold_imp, "Make Binary", "method=Otsu background=Dark calculate");
+	IJ.run(threshold_imp, "Make Binary", "method={} background=Dark calculate".format(threshold_method));
 	IJ.run(threshold_imp, "Fill Holes", "");
 	erode_count = 2;
 	for _ in range(erode_count):
@@ -631,8 +636,9 @@ def main():
 	output_folder = os.path.join(output_folder, (timestamp + ' output'));
 	params.last_output_path = output_folder;
 	os.mkdir(output_folder);
-	analysis_mode = choose_analysis_mode(params);
+	analysis_mode, threshold_method = choose_analysis_mode(params);
 	params.last_analysis_mode = analysis_mode;
+	params.last_threshold_method = threshold_method;
 	params.persist_parameters();
 
 	# load  image(s):
@@ -672,9 +678,9 @@ def main():
 		cal.pixelWidth = metadata["x_physical_size"];
 		cal.pixelHeight = metadata["y_physical_size"];
 		imp.setCalibration(cal);
-	
+
 		if analysis_mode=="GFP intensity":
-			out_stats = gfp_analysis(imp, f, output_folder, gfp_channel_number=gfp_channel_number, dapi_channel_number=dapi_channel_number);
+			out_stats = gfp_analysis(imp, f, output_folder, gfp_channel_number=gfp_channel_number, dapi_channel_number=dapi_channel_number, threshold_method=threshold_method);
 		elif analysis_mode=="Manual":
 			out_stats = manual_analysis(imp, f, output_folder, gfp_channel_number=gfp_channel_number, dapi_channel_number=dapi_channel_number);
 		out_statses.extend(out_stats);
