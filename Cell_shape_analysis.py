@@ -23,7 +23,7 @@ class Parameters(object):
 	# constants
 	_persist_parameters_filename = "IJ_cell_shape_analysis_params.json"
 	_persist_parameters_folder = "IJ_cell_shape_analysis";
-	_version_string = "0.0.1";
+	_version_string = "0.0.2";
 
 	def __init__(self, last_input_path=None, last_output_path=None, last_analysis_mode=None, last_threshold_method='Otsu'):
 		self.last_input_path = last_input_path;
