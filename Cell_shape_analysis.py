@@ -575,6 +575,42 @@ def perform_manual_qc(imp, rois, important_channel=1):
 
 	return rois;
 
+def ecad_analysis(imp, file_name, output_folder, gfp_channel_number=1, dapi_channel_number=3, red_channel_number=2, do_manual_qc=False):
+	"""perform analysis based on marker-driven watershed of junction labelling image"""
+	cal = imp.getCalibration();
+	channel_imps = ChannelSplitter.split(imp);
+	gfp_imp = channel_imps[gfp_channel_number-1];
+	gfp_imp.setTitle("GFP");
+	ecad_imp = channel_imps[red_channel_number-1];
+	ecad_imp.setTitle("E-cadherin");
+	threshold_imp = Duplicator().run(ecad_imp);
+	threshold_imp.setTitle("Ecad_threshold_imp");
+	nuc_imp = channel_imps[dapi_channel_number-1];
+	nuclei_locations, full_nuclei_imp, ws_seed_imp = get_nuclei_locations(nuc_imp, cal, distance_threshold_um=10, size_threshold_um2=100);
+	full_nuclei_imp.hide();
+	binary_cells_imp = generate_cell_masks(ws_seed_imp, ecad_imp, find_edges=False);
+	rois = generate_cell_rois(binary_cells_imp);
+	if do_manual_qc:
+		rois = perform_manual_qc(imp, rois, important_channel=gfp_channel_number);
+	no_nuclei_centroids = [get_no_nuclei_in_cell(roi, nuclei_locations) for roi in rois];
+	no_enclosed_nuclei = [get_no_nuclei_fully_enclosed(roi, full_nuclei_imp) for roi in rois];
+	full_nuclei_imp.changes = False;
+	full_nuclei_imp.close();
+	out_stats = generate_cell_shape_results(rois, 
+										 gfp_imp, 
+										 cal, 
+										 file_name, 
+										 no_nuclei_centroids=no_nuclei_centroids,
+										 no_enclosed_nuclei=no_enclosed_nuclei);
+	print("Number of cells identified = {}".format(len(out_stats)));
+	# save output
+	save_qc_image(imp, rois, "{}_plus_overlay.tiff".format(os.path.join(output_folder, os.path.splitext(file_name)[0])));
+	save_cell_rois(rois, output_folder, os.path.splitext(file_name)[0])
+	imp.changes = False;
+	imp.close();
+	save_output_csv(out_stats, output_folder);
+	return out_stats;
+
 def gfp_analysis(imp, file_name, output_folder, gfp_channel_number=1, dapi_channel_number=3, red_channel_number=2, threshold_method='Otsu', do_manual_qc=False):
 	"""perform analysis based on gfp intensity thresholding"""
 	cal = imp.getCalibration();
