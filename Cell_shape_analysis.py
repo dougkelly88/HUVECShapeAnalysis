@@ -25,6 +25,12 @@ class Parameters(object):
 	_persist_parameters_folder = "IJ_cell_shape_analysis";
 	_version_string = "0.0.2";
 
+	_analysis_modes = ["GFP intensity", 
+						"GFP intensity + manual correction", 
+						"E-cadherin watershed", 
+						"E-cadherin watershed + manual correction", 
+						"Manual"];
+
 	def __init__(self, last_input_path=None, last_output_path=None, last_analysis_mode=None, last_threshold_method='Otsu'):
 		self.last_input_path = last_input_path;
 		self.last_output_path = last_output_path;
@@ -120,7 +126,7 @@ class Parameters(object):
 		return str(self.__dict__);
 	
 	def list_analysis_modes(self):
-		return ["GFP intensity", "GFP intensity + manual correction", "E-cadherin watershed", "Manual"];
+		return Parameters._analysis_modes;
 
 class CellShapeResults(object):
 	"""simple class to contain cell shape analysis results"""
@@ -716,6 +722,11 @@ def main():
 			out_stats = gfp_analysis(imp, f, output_folder, gfp_channel_number=gfp_channel_number, dapi_channel_number=dapi_channel_number, threshold_method=threshold_method, do_manual_qc=do_manual_qc);
 		elif analysis_mode=="Manual":
 			out_stats = manual_analysis(imp, f, output_folder, gfp_channel_number=gfp_channel_number, dapi_channel_number=dapi_channel_number, important_channel=gfp_channel_number);
+		elif "E-cadherin watershed" in analysis_mode:
+			#out_stats = ecad_analysis(imp, f, output_folder, gfp_channel_number=gfp_channel_number, dapi_channel_number=dapi_channel_number, do_manual_qc=do_manual_qc);
+			imp.close();
+			IJ.showMessage("E-cadherin channel thresholding implementation not yet finished!");
+			raise NotImplementedError;
 		out_statses.extend(out_stats);
 		print("Current total number of cells identified: {}".format(len(out_statses)));
 		# get # nuclei per "cell"
