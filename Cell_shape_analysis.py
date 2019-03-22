@@ -624,39 +624,7 @@ def manual_analysis(imp, file_name, output_folder, gfp_channel_number=1, dapi_ch
 	nuc_imp = channel_imps[dapi_channel_number-1];
 	nuclei_locations, full_nuclei_imp = get_nuclei_locations(nuc_imp, cal, distance_threshold_um=10, size_threshold_um2=100);
 	full_nuclei_imp.hide();
-	IJ.setTool("freehand");
-	proceed = False;
-	roim = RoiManager();
-	roim.runCommand("Show all with labels");
-	for ch in range(imp.getNChannels()):
-		imp.setC(ch+1);
-		sat_frac = 0.99 if (ch+1)==important_channel else 0.01;
-		IJ.run(imp, "Enhance Contrast", "saturated={}".format(sat_frac));
-	while not proceed:
-		dialog = NonBlockingGenericDialog("Perform manual segmentation");
-		dialog.setOKLabel("Proceed to next image...")
-		dialog.addMessage("Perform manual segmentation: ");
-		dialog.addMessage("Draw around cells and add to the region of interest manager (Ctrl+T)");
-		dialog.addMessage("You can see what you've added so far if you check \"show all\" on the ROI manager");
-		dialog.addMessage("Then press \"proceed to next image\" when all cells have been added");
-		dialog.showDialog();
-		if dialog.wasCanceled():
-			raise KeyboardInterrupt("Run canceled");
-		elif dialog.wasOKed():
-			if roim.getCount()==0:
-				rois = [];
-				confirm_dialog = GenericDialog("Continue?");
-				confirm_dialog.addMessage("No rois selected in this FOV. Are you sure you want to proceed?")
-				confirm_dialog.setOKLabel("Yes, proceed");
-				confirm_dialog.setCancelLabel("No, not yet");
-				confirm_dialog.showDialog();
-				if confirm_dialog.wasOKed():
-					proceed = True;
-			else:
-				rois = roim.getRoisAsArray();
-				proceed = True;
-	roim.reset();
-	roim.close();
+	rois = perform_manual_qc(imp, [], important_channel=gfp_channel_number);
 	no_nuclei_centroids = [get_no_nuclei_in_cell(roi, nuclei_locations) for roi in rois];
 	no_enclosed_nuclei = [get_no_nuclei_fully_enclosed(roi, full_nuclei_imp) for roi in rois];
 	full_nuclei_imp.changes = False;
