@@ -120,7 +120,7 @@ class Parameters(object):
 		return str(self.__dict__);
 	
 	def list_analysis_modes(self):
-		return ["GFP intensity", "E-cadherin watershed", "Manual"];
+		return ["GFP intensity", "GFP intensity + manual correction", "E-cadherin watershed", "Manual"];
 
 class CellShapeResults(object):
 	"""simple class to contain cell shape analysis results"""
@@ -514,7 +514,17 @@ def get_no_nuclei_fully_enclosed(roi, full_nuclei_imp, overlap_threshold=0.65):
 	cell_imp.close();
 	return no_enclosed_nuclei;
 
-def gfp_analysis(imp, file_name, output_folder, gfp_channel_number=1, dapi_channel_number=3, red_channel_number=2):
+def filter_cells_by_relative_nuclear_area(rois, full_nuclei_imp, relative_nuclear_area_threshold=0.75):
+	"""if more than (100*relative_nuclear_area_threshold)% of cell area is made up of nucleus, discard"""
+	out_rois = [];
+	for roi in rois:
+		full_nuclei_imp.setRoi(roi);
+		stats = full_nuclei_imp.getStatistics();
+		if stats.mean/255 < relative_nuclear_area_threshold:
+			out_rois.append(roi);
+	return out_rois;
+
+
 def gfp_analysis(imp, file_name, output_folder, gfp_channel_number=1, dapi_channel_number=3, red_channel_number=2, threshold_method='Otsu'):
 	"""perform analysis based on gfp intensity thresholding"""
 	cal = imp.getCalibration();
@@ -538,6 +548,7 @@ def gfp_analysis(imp, file_name, output_folder, gfp_channel_number=1, dapi_chann
 	threshold_imp = keep_blobs_bigger_than(threshold_imp, min_size_pix=1000);
 	threshold_imp = my_kill_borders(threshold_imp);
 	rois = generate_cell_rois(threshold_imp);
+	rois = filter_cells_by_relative_nuclear_area(rois, full_nuclei_imp, relative_nuclear_area_threshold=0.75);
 	no_nuclei_centroids = [get_no_nuclei_in_cell(roi, nuclei_locations) for roi in rois];
 	no_enclosed_nuclei = [get_no_nuclei_fully_enclosed(roi, full_nuclei_imp) for roi in rois];
 	full_nuclei_imp.changes = False;
