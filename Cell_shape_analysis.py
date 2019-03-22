@@ -541,6 +541,7 @@ def perform_manual_qc(imp, rois, important_channel=1):
 		sat_frac = 0.99 if (ch+1)==important_channel else 0.01;
 		IJ.run(imp, "Enhance Contrast", "saturated={}".format(sat_frac));
 
+	imp.setC(important_channel);
 	IJ.setTool("freehand");
 	proceed = False;
 	roim = RoiManager();
@@ -575,7 +576,7 @@ def perform_manual_qc(imp, rois, important_channel=1):
 	for ch in range(imp.getNChannels()):
 		imp.setC(ch+1);
 		IJ.run(imp, "Enhance Contrast", "saturated={}".format(0.35));
-
+	imp.setC(important_channel);
 	return rois;
 
 def ecad_analysis(imp, file_name, output_folder, gfp_channel_number=1, dapi_channel_number=3, red_channel_number=2, do_manual_qc=False):

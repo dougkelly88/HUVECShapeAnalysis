@@ -1,0 +1,318 @@
+Name : EXP1 1dpt_MARCKSL1-EGFP_1	13/03/2019	15:21:08	
+
+Type : 16 bit grey/pseudo
+Intensity : 1.000000 lux
+x : 1024 * 0.325000 : um
+y : 1024 * 0.325000 : um
+Wavelength : 3
+Z : 16
+
+
+[Environment]
+User=User
+Configuration=CSU
+Version=Andor iQ 3.6.3 
+[Environment End]
+[Created]
+Date=13/03/2019
+Time=13:38:30
+[Created End]
+[Protocol Description]
+Protocol - Basic
+	6D View Compatible - Yes
+	Image - EXP1 1dpt_MARCKSL1-EGFP_1
+		Camera Binning - Use Current
+		Wait Allocation - Off
+		Camera Selection - Use Current
+		Events
+		Repeat - Channel (6 CSU - 488,7 CSU - 561,CSU - 405)
+			Channel Description
+				Channel - 6 CSU - 488
+					Camera EM Gain - 0
+					Camera Binning X - CURRENT
+					Camera Binning Y - CURRENT
+					Camera Exposure Time (s) - 0.125
+					Camera Exposure Units - 1
+					DSD Imaging Mode - 3
+					LUT - Green
+					Map Min - 95
+					Map Max - 687
+					FRAPPA - Current
+					FRAPPA Dwell Time - 40
+					FRAPPA Repeat - 1
+					IXBX AFMirror - 1
+					IXBX Analyzer - Current
+					IXBX Condenser - 6
+					IXBX DIC - Current
+					IXBX Fluo Filter 1 - 1
+					IXBX Fluo Filter 2 - Current
+					IXBX Fluo Filter 3 - Current
+					IXBX Fluo Shutter 1 - Closed
+					IXBX Polarizer - 0
+					IXBX Port - 1
+					IXBX Trans Filter 1 - Current
+					IXBX Trans Shutter 1 - Closed
+					IXBX Z Motor (ZDC) - DELTA_Z 0
+					CSU Aperture - 16.7
+					CSU Camera Port - 3
+					CSU Lens 1 - Current
+					CSU Lens 2 - Current
+					CSU NIR Shutter - Current
+					CSU PB Mirror - 3
+					CSU PB Shutter - Current
+					CSU Port - 0
+					CSU Shutter - Open
+					Dichroic - 1
+					Emmision - Current
+					Excitation - 1
+					NDFilter - Current
+					ILE1 Channel 1 Intensity - -1
+					ILE1 Channel 2 Intensity - 100
+					ILE1 Channel 3 Intensity - -1
+					ILE1 Channel 4 Intensity - Current
+					ILE1 Channel 5 Intensity - Current
+					ILE1 Channel 6 Intensity - Current
+					ILE1 Channel 7 Intensity - Current
+					ILE1 Channel 8 Intensity - Current
+					ILE1 Laser 1 Enabled - 1
+					ILE1 Laser 1 External Control - Current
+					ILE1 Laser 2 Enabled - 1
+					ILE1 Laser 2 External Control - Current
+					ILE1 Laser 3 Enabled - 1
+					ILE1 Laser 3 External Control - Current
+					ILE1 Laser 4 Enabled - 1
+					ILE1 Laser 4 External Control - Current
+					ILE1 Laser 5 Enabled - 1
+					ILE1 Laser 5 External Control - Current
+					ILE1 Laser 6 Enabled - 1
+					ILE1 Laser 6 External Control - Current
+					ILE1 Laser 7 Enabled - 1
+					ILE1 Laser 7 External Control - Current
+					ILE1 Laser 8 Enabled - 1
+					ILE1 Laser 8 External Control - Current
+					ILE1 MPD - 0
+					ILE1 Position - 488
+					ILE1 Shutter - Open-Closed
+				Channel - 7 CSU - 561
+					Camera EM Gain - 0
+					Camera Binning X - CURRENT
+					Camera Binning Y - CURRENT
+					Camera Exposure Time (s) - 0.10
+					Camera Exposure Units - 1
+					DSD Imaging Mode - 3
+					LUT - Magenta
+					Map Min - 85
+					Map Max - 10859
+					FRAPPA - Current
+					FRAPPA Dwell Time - 40
+					FRAPPA Repeat - 1
+					IXBX AFMirror - 1
+					IXBX Analyzer - Current
+					IXBX Condenser - 6
+					IXBX DIC - Current
+					IXBX Fluo Filter 1 - 1
+					IXBX Fluo Filter 2 - Current
+					IXBX Fluo Filter 3 - Current
+					IXBX Fluo Shutter 1 - Closed
+					IXBX Polarizer - 0
+					IXBX Port - 1
+					IXBX Trans Filter 1 - Current
+					IXBX Trans Shutter 1 - Closed
+					IXBX Z Motor (ZDC) - DELTA_Z 0
+					CSU Aperture - 16.7
+					CSU Camera Port - 3
+					CSU Lens 1 - Current
+					CSU Lens 2 - Current
+					CSU NIR Shutter - Current
+					CSU PB Mirror - 3
+					CSU PB Shutter - Current
+					CSU Port - 0
+					CSU Shutter - Open
+					Dichroic - 1
+					Emmision - Current
+					Excitation - 2
+					NDFilter - Current
+					ILE1 Channel 1 Intensity - -1
+					ILE1 Channel 2 Intensity - -1
+					ILE1 Channel 3 Intensity - 100
+					ILE1 Channel 4 Intensity - Current
+					ILE1 Channel 5 Intensity - Current
+					ILE1 Channel 6 Intensity - Current
+					ILE1 Channel 7 Intensity - Current
+					ILE1 Channel 8 Intensity - Current
+					ILE1 Laser 1 Enabled - 1
+					ILE1 Laser 1 External Control - Current
+					ILE1 Laser 2 Enabled - 1
+					ILE1 Laser 2 External Control - Current
+					ILE1 Laser 3 Enabled - 1
+					ILE1 Laser 3 External Control - Current
+					ILE1 Laser 4 Enabled - 1
+					ILE1 Laser 4 External Control - Current
+					ILE1 Laser 5 Enabled - 1
+					ILE1 Laser 5 External Control - Current
+					ILE1 Laser 6 Enabled - 1
+					ILE1 Laser 6 External Control - Current
+					ILE1 Laser 7 Enabled - 1
+					ILE1 Laser 7 External Control - Current
+					ILE1 Laser 8 Enabled - 1
+					ILE1 Laser 8 External Control - Current
+					ILE1 MPD - 0
+					ILE1 Position - 561
+					ILE1 Shutter - Open-Closed
+				Channel - CSU - 405
+					Camera EM Gain - 0
+					Camera Binning X - CURRENT
+					Camera Binning Y - CURRENT
+					Camera Exposure Time (s) - 0.01
+					Camera Exposure Units - 1
+					DSD Imaging Mode - 3
+					LUT - Blue
+					Map Min - 51
+					Map Max - 179
+					FRAPPA - Current
+					FRAPPA Dwell Time - 40
+					FRAPPA Repeat - 1
+					IXBX AFMirror - 1
+					IXBX Analyzer - Current
+					IXBX Condenser - 6
+					IXBX DIC - Current
+					IXBX Fluo Filter 1 - 1
+					IXBX Fluo Filter 2 - Current
+					IXBX Fluo Filter 3 - Current
+					IXBX Fluo Shutter 1 - Closed
+					IXBX Polarizer - 0
+					IXBX Port - 1
+					IXBX Trans Filter 1 - Current
+					IXBX Trans Shutter 1 - Closed
+					IXBX Z Motor (ZDC) - DELTA_Z 0
+					CSU Aperture - 20.9
+					CSU Camera Port - 3
+					CSU Lens 1 - Current
+					CSU Lens 2 - Current
+					CSU NIR Shutter - Current
+					CSU PB Mirror - 3
+					CSU PB Shutter - Current
+					CSU Port - 0
+					CSU Shutter - Open
+					Dichroic - 1
+					Emmision - Current
+					Excitation - 3
+					NDFilter - Current
+					ILE1 Channel 1 Intensity - 69.968
+					ILE1 Channel 2 Intensity - -1
+					ILE1 Channel 3 Intensity - -1
+					ILE1 Channel 4 Intensity - Current
+					ILE1 Channel 5 Intensity - Current
+					ILE1 Channel 6 Intensity - Current
+					ILE1 Channel 7 Intensity - Current
+					ILE1 Channel 8 Intensity - Current
+					ILE1 Laser 1 Enabled - 1
+					ILE1 Laser 1 External Control - Current
+					ILE1 Laser 2 Enabled - 1
+					ILE1 Laser 2 External Control - Current
+					ILE1 Laser 3 Enabled - 1
+					ILE1 Laser 3 External Control - Current
+					ILE1 Laser 4 Enabled - 1
+					ILE1 Laser 4 External Control - Current
+					ILE1 Laser 5 Enabled - 1
+					ILE1 Laser 5 External Control - Current
+					ILE1 Laser 6 Enabled - 1
+					ILE1 Laser 6 External Control - Current
+					ILE1 Laser 7 Enabled - 1
+					ILE1 Laser 7 External Control - Current
+					ILE1 Laser 8 Enabled - 1
+					ILE1 Laser 8 External Control - Current
+					ILE1 MPD - 0
+					ILE1 Position - 405
+					ILE1 Shutter - Open
+			Repeat Z - 14.85 um in 16 planes (centre)
+				Snap - Frame
+			End - Z
+		End - Channel
+
+[Protocol Description End]
+[Grab Parameters]
+Camera=Zyla
+Window Left=0
+Window Top=0
+Window Right=2047
+Window Bottom=2047
+Window Width=2048
+Window Height=2048
+BinningX=2
+BinningY=2
+Image Width=1024
+Image Height=1024
+Exposure=125.0 ms
+Rotation=0
+FlipV=0
+FlipH=0
+TimeStamps=Hardware
+[Grab Parameters End]
+[Tab Device Info]
+Camera=ZYLA-4.2P-USB3 5630
+InterfaceType=USB3
+ControllerCard=
+DriverVersion=2.102.33050.0
+CofVersion=0
+VxDVersion=0.0
+SoftwareTrigger=Supported
+BitDepth=16
+FPGA_Version=20150812.0
+Ocx_Version=5.4.16.0
+Ocx_Time=15:05:24 Apr 23 2018
+Ocx_File=C:\PROGRA~2\ANDORB~1\COMMON~1\KIDAND~1.OCX
+
+[Tab Device Info End]
+[Tab Exposure]
+Window=1024 : 1024
+Shutter=Open
+Binning=2x2
+Temperature - Actual =0
+Display Control - Fastest=Checked
+Display Control - Display Rate=10
+Gains - Pre-Amp-Gain=16-bit (low noise & high well capacity)
+EM Gain - Enabled=Unchecked
+Gains - EMGain=999
+Exposure Time - Frame Transfer=Unchecked
+Exposure Time - unit=ms
+Exposure Time - exposure value=125.0
+Exposure Time - Readout in ms=9.830
+Experiment Control - FLZ=Unchecked
+Experiment Control - Trig Mode=Free Run
+Use Frame averaging=Unchecked
+Frames to be averaged=4
+Fastest Grab=Unchecked
+Available memory=4095
+[Tab Exposure End]
+[Tab Temperature/Shutter]
+Temperature Setting=-20
+Actual Temperature=0
+Cooling=lbl_Cooling
+Fan=Full
+TTL High Open=Checked
+Shutter Open Transfer Time=60
+Shutter Close Transfer Time=80
+[Tab Temperature/Shutter End]
+[Tab Read Parameters]
+Pixel Readout Rate=540 MHz - fastest readout
+Electronic Shuttering Mode=Rolling
+[Tab Read Parameters End]
+[Tab Image Orientation]
+Flip=None
+Rotation in Degrees=None
+[Tab Image Orientation End]
+[Image Info]
+Window Left=0
+Window Top=0
+Window Right=2047
+Window Bottom=2047
+Window Width=2048
+Window Height=2048
+Window BinningX=2
+Window BinningY=2
+[Image Info End]
+[First Frame]
+SavedTime=13/03/2019 13:39:43.465
+[First Frame End]
+
