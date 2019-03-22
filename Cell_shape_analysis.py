@@ -294,7 +294,10 @@ def generate_cell_shape_results(rois, intensity_channel_imp, cal, file_name, no_
 		perimeter = roi.getLength();
 		aspect_ratio = stats.major/stats.minor;
 		cvh_poly = roi.getConvexHull();
-		convex_hull_roi = PolygonRoi([x for x in cvh_poly.xpoints], [y for y in cvh_poly.ypoints], PolygonRoi.POLYGON);
+		if cvh_poly is not None:
+			convex_hull_roi = PolygonRoi([x for x in cvh_poly.xpoints], [y for y in cvh_poly.ypoints], PolygonRoi.POLYGON);
+		else:
+			continue;
 		print("roi length = {}".format(roi.getLength()));
 		print("convex hull roi length = {}".format(convex_hull_roi.getLength()));
 		cell_spikiness_index = roi.getLength()/(pixel_width * convex_hull_roi.getLength());
@@ -613,80 +616,91 @@ def ecad_analysis(imp, file_name, output_folder, gfp_channel_number=1, dapi_chan
 
 def gfp_analysis(imp, file_name, output_folder, gfp_channel_number=1, dapi_channel_number=3, red_channel_number=2, threshold_method='Otsu', do_manual_qc=False):
 	"""perform analysis based on gfp intensity thresholding"""
-	cal = imp.getCalibration();
-	channel_imps = ChannelSplitter.split(imp);
-	gfp_imp = channel_imps[gfp_channel_number-1];
-	gfp_imp.setTitle("GFP");
-	threshold_imp = Duplicator().run(gfp_imp);
-	threshold_imp.setTitle("GFP_threshold_imp");
-	ecad_imp = channel_imps[red_channel_number-1];
-	ecad_imp.setTitle("E-cadherin");
-	nuc_imp = channel_imps[dapi_channel_number-1];
-	nuclei_locations, full_nuclei_imp = get_nuclei_locations(nuc_imp, cal, distance_threshold_um=10, size_threshold_um2=100);
-	full_nuclei_imp.hide();
-	IJ.run(threshold_imp, "Make Binary", "method={} background=Dark calculate".format(threshold_method));
-	IJ.run(threshold_imp, "Fill Holes", "");
-	erode_count = 2;
-	for _ in range(erode_count):
-		IJ.run(threshold_imp, "Erode", "");
-	for _ in range(erode_count):
-		IJ.run(threshold_imp, "Dilate", "");
-	threshold_imp = keep_blobs_bigger_than(threshold_imp, min_size_pix=1000);
-	threshold_imp = my_kill_borders(threshold_imp);
-	rois = generate_cell_rois(threshold_imp);
-	threshold_imp.changes = False;
-	threshold_imp.close();
-	rois = filter_cells_by_relative_nuclear_area(rois, full_nuclei_imp, relative_nuclear_area_threshold=0.75);
-	if do_manual_qc:
-		rois = perform_manual_qc(imp, rois, important_channel=gfp_channel_number);
-	no_nuclei_centroids = [get_no_nuclei_in_cell(roi, nuclei_locations) for roi in rois];
-	no_enclosed_nuclei = [get_no_nuclei_fully_enclosed(roi, full_nuclei_imp) for roi in rois];
-	full_nuclei_imp.changes = False;
-	full_nuclei_imp.close();
-	out_stats = generate_cell_shape_results(rois, 
-										 gfp_imp, 
-										 cal, 
-										 file_name, 
-										 no_nuclei_centroids=no_nuclei_centroids,
-										 no_enclosed_nuclei=no_enclosed_nuclei);
-	print("Number of cells identified = {}".format(len(out_stats)));
-	# save output
-	save_qc_image(imp, rois, "{}_plus_overlay.tiff".format(os.path.join(output_folder, os.path.splitext(file_name)[0])));
-	save_cell_rois(rois, output_folder, os.path.splitext(file_name)[0])
-	imp.changes = False;
-	imp.close();
-	save_output_csv(out_stats, output_folder);
+	try:
+		cal = imp.getCalibration();
+		channel_imps = ChannelSplitter.split(imp);
+		gfp_imp = channel_imps[gfp_channel_number-1];
+		gfp_imp.setTitle("GFP");
+		threshold_imp = Duplicator().run(gfp_imp);
+		threshold_imp.setTitle("GFP_threshold_imp");
+		ecad_imp = channel_imps[red_channel_number-1];
+		ecad_imp.setTitle("E-cadherin");
+		nuc_imp = channel_imps[dapi_channel_number-1];
+		nuclei_locations, full_nuclei_imp = get_nuclei_locations(nuc_imp, cal, distance_threshold_um=10, size_threshold_um2=100);
+		full_nuclei_imp.hide();
+		IJ.run(threshold_imp, "Make Binary", "method={} background=Dark calculate".format(threshold_method));
+		IJ.run(threshold_imp, "Fill Holes", "");
+		erode_count = 2;
+		for _ in range(erode_count):
+			IJ.run(threshold_imp, "Erode", "");
+		for _ in range(erode_count):
+			IJ.run(threshold_imp, "Dilate", "");
+		threshold_imp = keep_blobs_bigger_than(threshold_imp, min_size_pix=1000);
+		threshold_imp = my_kill_borders(threshold_imp);
+		rois = generate_cell_rois(threshold_imp);
+		threshold_imp.changes = False;
+		threshold_imp.close();
+		rois = filter_cells_by_relative_nuclear_area(rois, full_nuclei_imp, relative_nuclear_area_threshold=0.75);
+		if do_manual_qc:
+			rois = perform_manual_qc(imp, rois, important_channel=gfp_channel_number);
+		no_nuclei_centroids = [get_no_nuclei_in_cell(roi, nuclei_locations) for roi in rois];
+		no_enclosed_nuclei = [get_no_nuclei_fully_enclosed(roi, full_nuclei_imp) for roi in rois];
+		full_nuclei_imp.changes = False;
+		full_nuclei_imp.close();
+		out_stats = generate_cell_shape_results(rois, 
+											 gfp_imp, 
+											 cal, 
+											 file_name, 
+											 no_nuclei_centroids=no_nuclei_centroids,
+											 no_enclosed_nuclei=no_enclosed_nuclei);
+		print("Number of cells identified = {}".format(len(out_stats)));
+		# save output
+		save_qc_image(imp, rois, "{}_plus_overlay.tiff".format(os.path.join(output_folder, os.path.splitext(file_name)[0])));
+		save_cell_rois(rois, output_folder, os.path.splitext(file_name)[0])
+		imp.changes = False;
+		imp.close();
+		save_output_csv(out_stats, output_folder);
+	except Exception as e:
+		print("Ran into a problem analysing {}: {}. Skipping to next cell...".format(file_name, 
+																			   e.message));
+		out_stats = [];
+		pass;
 	return out_stats;
 
 def manual_analysis(imp, file_name, output_folder, gfp_channel_number=1, dapi_channel_number=3, red_channel_number=2, important_channel=1):
 	"""perform analysis based on manually drawn cells"""
-	cal = imp.getCalibration();
-	channel_imps = ChannelSplitter.split(imp);
-	gfp_imp = channel_imps[gfp_channel_number-1];
-	nuc_imp = channel_imps[dapi_channel_number-1];
-	nuclei_locations, full_nuclei_imp = get_nuclei_locations(nuc_imp, cal, distance_threshold_um=10, size_threshold_um2=100);
-	full_nuclei_imp.hide();
-	rois = perform_manual_qc(imp, [], important_channel=gfp_channel_number);
-	no_nuclei_centroids = [get_no_nuclei_in_cell(roi, nuclei_locations) for roi in rois];
-	no_enclosed_nuclei = [get_no_nuclei_fully_enclosed(roi, full_nuclei_imp) for roi in rois];
-	full_nuclei_imp.changes = False;
-	full_nuclei_imp.close();
-	out_stats = generate_cell_shape_results(rois, 
-										 gfp_imp, 
-										 cal, 
-										 file_name, 
-										 no_nuclei_centroids=no_nuclei_centroids,
-										 no_enclosed_nuclei=no_enclosed_nuclei);
-	print("Number of cells identified = {}".format(len(out_stats)));
-	for ch in range(imp.getNChannels()):
-		imp.setC(ch+1);
-		IJ.run(imp, "Enhance Contrast", "saturated={}".format(0.35));
-	# save output 
-	save_qc_image(imp, rois, "{}_plus_overlay.tiff".format(os.path.join(output_folder, os.path.splitext(file_name)[0])));
-	save_cell_rois(rois, output_folder, os.path.splitext(file_name)[0])
-	imp.changes = False;
-	imp.close();
-	save_output_csv(out_stats, output_folder);
+	try:
+		cal = imp.getCalibration();
+		channel_imps = ChannelSplitter.split(imp);
+		gfp_imp = channel_imps[gfp_channel_number-1];
+		nuc_imp = channel_imps[dapi_channel_number-1];
+		nuclei_locations, full_nuclei_imp = get_nuclei_locations(nuc_imp, cal, distance_threshold_um=10, size_threshold_um2=100);
+		full_nuclei_imp.hide();
+		rois = perform_manual_qc(imp, [], important_channel=gfp_channel_number);
+		no_nuclei_centroids = [get_no_nuclei_in_cell(roi, nuclei_locations) for roi in rois];
+		no_enclosed_nuclei = [get_no_nuclei_fully_enclosed(roi, full_nuclei_imp) for roi in rois];
+		full_nuclei_imp.changes = False;
+		full_nuclei_imp.close();
+		out_stats = generate_cell_shape_results(rois, 
+											 gfp_imp, 
+											 cal, 
+											 file_name, 
+											 no_nuclei_centroids=no_nuclei_centroids,
+											 no_enclosed_nuclei=no_enclosed_nuclei);
+		print("Number of cells identified = {}".format(len(out_stats)));
+		for ch in range(imp.getNChannels()):
+			imp.setC(ch+1);
+			IJ.run(imp, "Enhance Contrast", "saturated={}".format(0.35));
+		# save output 
+		save_qc_image(imp, rois, "{}_plus_overlay.tiff".format(os.path.join(output_folder, os.path.splitext(file_name)[0])));
+		save_cell_rois(rois, output_folder, os.path.splitext(file_name)[0])
+		imp.changes = False;
+		imp.close();
+		save_output_csv(out_stats, output_folder);
+	except Exception as e:
+		print("Ran into a problem analysing {}: {}. Skipping to next cell...".format(file_name, 
+																			   e.message));
+		out_stats = [];
 	return out_stats;
 
 def main():
