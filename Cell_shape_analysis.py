@@ -23,7 +23,7 @@ class Parameters(object):
 	# constants
 	_persist_parameters_filename = "IJ_cell_shape_analysis_params.json"
 	_persist_parameters_folder = "IJ_cell_shape_analysis";
-	_version_string = "0.0.6";
+	_version_string = "0.0.7";
 
 	_analysis_modes = ["GFP intensity", 
 						"GFP intensity + manual correction", 
