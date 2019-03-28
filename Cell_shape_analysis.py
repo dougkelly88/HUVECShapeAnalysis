@@ -31,11 +31,12 @@ class Parameters(object):
 						"E-cadherin watershed + manual correction", 
 						"Manual"];
 
-	def __init__(self, last_input_path=None, last_output_path=None, last_analysis_mode=None, last_threshold_method='Otsu'):
+	def __init__(self, last_input_path=None, last_output_path=None, last_analysis_mode=None, last_threshold_method='Otsu', last_minimum_cell_area_um2=105):
 		self.last_input_path = last_input_path;
 		self.last_output_path = last_output_path;
 		self.last_analysis_mode = last_analysis_mode if last_analysis_mode is not None else self.list_analysis_modes()[0];
 		self.last_threshold_method = last_threshold_method;
+		self.last_minimum_cell_area_um2 = last_minimum_cell_area_um2;
 		self.__cellshapeparams__ = True;
 
 	def save_parameters_to_json(self, file_path):
@@ -55,6 +56,7 @@ class Parameters(object):
 		self.last_output_path = dct["last_output_path"];
 		self.last_analysis_mode = dct["last_analysis_mode"];
 		self.last_threshold_method = dct["last_threshold_method"]
+		self.last_minimum_cell_area_um2 = dct["last_minimum_cell_area_um2"]
 
 	def load_parameters_from_json(self, file_path):
 		"""load parameters from a JSON file"""
@@ -164,10 +166,11 @@ def choose_analysis_mode(params):
 	dialog.addMessage("Please choose how cell shape anlaysis should proceed:");
 	dialog.addChoice("Analysis mode: ", params.list_analysis_modes(), params.last_analysis_mode);
 	dialog.addChoice("GFP segmentation method: ", AutoThresholder.getMethods(), params.last_threshold_method);
+	dialog.addNumericField("Minimum cell area (um" + _squared + "): ", params.last_minimum_cell_area_um2, 0);
 	dialog.showDialog();
 	if dialog.wasCanceled():
 		raise KeyboardInterrupt("Run canceled");
-	return dialog.getNextChoice(), dialog.getNextChoice();	
+	return dialog.getNextChoice(), dialog.getNextChoice(), dialog.getNextNumber();	
 
 def MyWaitForUser(title, message):
 	"""non-modal dialog with option to cancel the analysis"""
@@ -240,12 +243,12 @@ def keep_blobs_bigger_than(imp, min_size_pix=100):
 	roim.reset();
 	rt.reset();
 	pa.analyze(imp);
-	rt_areas = rt.getColumn(rt.getColumnIndex("Area")).tolist();
-#	print("Number of cells identified: {}".format(len(rt_areas)));
-	for idx in range(len(rt_areas)):
-		roim.select(out_imp, idx);
-		IJ.run(out_imp, "Set...", "value=255 slice");
-	mx_ind = rt_areas.index(max(rt_areas))
+	if roim.getCount()>0:
+		rt_areas = rt.getColumn(rt.getColumnIndex("Area")).tolist();
+	#	print("Number of cells identified: {}".format(len(rt_areas)));
+		for idx in range(len(rt_areas)):
+			roim.select(out_imp, idx);
+			IJ.run(out_imp, "Set...", "value=255 slice");
 	roim.reset();
 	roim.close();
 	imp.changes = False;
@@ -615,7 +618,7 @@ def ecad_analysis(imp, file_name, output_folder, gfp_channel_number=1, dapi_chan
 	save_output_csv(out_stats, output_folder);
 	return out_stats;
 
-def gfp_analysis(imp, file_name, output_folder, gfp_channel_number=1, dapi_channel_number=3, red_channel_number=2, threshold_method='Otsu', do_manual_qc=False):
+def gfp_analysis(imp, file_name, output_folder, gfp_channel_number=1, dapi_channel_number=3, red_channel_number=2, threshold_method='Otsu', do_manual_qc=False, min_size_pix=1000):
 	"""perform analysis based on gfp intensity thresholding"""
 	try:
 		cal = imp.getCalibration();
@@ -636,7 +639,7 @@ def gfp_analysis(imp, file_name, output_folder, gfp_channel_number=1, dapi_chann
 			IJ.run(threshold_imp, "Erode", "");
 		for _ in range(erode_count):
 			IJ.run(threshold_imp, "Dilate", "");
-		threshold_imp = keep_blobs_bigger_than(threshold_imp, min_size_pix=1000);
+		threshold_imp = keep_blobs_bigger_than(threshold_imp, min_size_pix);
 		threshold_imp = my_kill_borders(threshold_imp);
 		rois = generate_cell_rois(threshold_imp);
 		threshold_imp.changes = False;
@@ -725,10 +728,11 @@ def main():
 	output_folder = os.path.join(output_folder, (timestamp + ' output'));
 	params.last_output_path = output_folder;
 	os.mkdir(output_folder);
-	analysis_mode, threshold_method = choose_analysis_mode(params);
+	analysis_mode, threshold_method, minimum_cell_area_um2 = choose_analysis_mode(params);
 	params.last_analysis_mode = analysis_mode;
 	do_manual_qc = "+ manual correction" in analysis_mode;
 	params.last_threshold_method = threshold_method;
+	params.last_minimum_cell_area_um2 = minimum_cell_area_um2;
 	params.persist_parameters();
 
 	# load  image(s):
@@ -769,8 +773,10 @@ def main():
 		cal.pixelHeight = metadata["y_physical_size"];
 		imp.setCalibration(cal);
 
+		#threshold_cell_area_um2 = 105; # hardcoded for now, value set for consistency with early runs. TODO: allow user to define during setup
+		min_size_pix = minimum_cell_area_um2/(cal.pixelHeight * cal.pixelWidth);
 		if "GFP intensity" in analysis_mode:
-			out_stats = gfp_analysis(imp, f, output_folder, gfp_channel_number=gfp_channel_number, dapi_channel_number=dapi_channel_number, threshold_method=threshold_method, do_manual_qc=do_manual_qc);
+			out_stats = gfp_analysis(imp, f, output_folder, gfp_channel_number=gfp_channel_number, dapi_channel_number=dapi_channel_number, threshold_method=threshold_method, do_manual_qc=do_manual_qc, min_size_pix=min_size_pix);
 		elif analysis_mode=="Manual":
 			out_stats = manual_analysis(imp, f, output_folder, gfp_channel_number=gfp_channel_number, dapi_channel_number=dapi_channel_number, important_channel=gfp_channel_number);
 		elif "E-cadherin watershed" in analysis_mode:
