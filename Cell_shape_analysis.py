@@ -133,6 +133,7 @@ class Parameters(object):
 	def list_analysis_modes(self):
 		return Parameters._analysis_modes;
 
+
 class CellShapeResults(object):
 	"""simple class to contain cell shape analysis results"""
 	def __init__(self, 
@@ -163,6 +164,7 @@ class CellShapeResults(object):
 		"""calculate cell spikiness index, i.e. deviation from circular cell"""
 		return (cell_perimeter_um**2 / (4 * math.pi * cell_area_um2));
 
+
 def choose_analysis_mode(params):
 	"""present UI for choosing how cells should be identified"""
 	dialog = GenericDialog("Analysis methods");
@@ -174,6 +176,7 @@ def choose_analysis_mode(params):
 	if dialog.wasCanceled():
 		raise KeyboardInterrupt("Run canceled");
 	return dialog.getNextChoice(), dialog.getNextChoice(), dialog.getNextNumber();	
+
 
 def MyWaitForUser(title, message):
 	"""non-modal dialog with option to cancel the analysis"""
@@ -188,6 +191,7 @@ def MyWaitForUser(title, message):
 	if dialog.wasCanceled():
 		raise KeyboardInterrupt("Run canceled");
 	return;
+
 
 def import_iq3_metadata(metadata_path):
 	"""import basic image metadata based on the metadata saved by iQ3 software at acquisition time"""
@@ -227,6 +231,7 @@ def import_iq3_metadata(metadata_path):
 			meta_dict['channel_list'] = ch_list;
 		return meta_dict;
 
+
 def keep_blobs_bigger_than(imp, min_size_pix=100):
 	"""remove all blobs other than the largest by area"""
 	imp.killRoi();
@@ -258,6 +263,7 @@ def keep_blobs_bigger_than(imp, min_size_pix=100):
 	imp.close();
 	return out_imp;
 
+
 def generate_cell_rois(seg_binary_imp):
 	"""generate rois from which cell shape information will be gleaned"""
 	seg_binary_imp.killRoi();
@@ -273,6 +279,7 @@ def generate_cell_rois(seg_binary_imp):
 	roim.close();
 	return rois;
 	
+
 def save_cell_rois(rois, output_folder, filename):
 	"""save cell rois to a *.zip file"""
 	if len(rois)>0:
@@ -282,6 +289,7 @@ def save_cell_rois(rois, output_folder, filename):
 				roim.addRoi(roi);
 		roim.runCommand("Save", os.path.join(output_folder, "{} cell rois.zip".format(filename)));
 		roim.close();
+
 
 def generate_cell_shape_results(rois, intensity_channel_imp, cal, file_name, no_nuclei_centroids=None, no_enclosed_nuclei=None):
 	"""from list of rois, generate results describing the cell enclosed in each roi"""
@@ -320,6 +328,7 @@ def generate_cell_shape_results(rois, intensity_channel_imp, cal, file_name, no_
 									  roi=roi));
 	return cell_shapes;
 
+
 def generate_cell_masks(watershed_seeds_imp, intensity_channel_imp, find_edges=False):
 	"""perform marker-driven watershed on image in intensity_channel_imp"""
 	title = os.path.splitext(intensity_channel_imp.getTitle())[0];
@@ -342,6 +351,7 @@ def generate_cell_masks(watershed_seeds_imp, intensity_channel_imp, find_edges=F
 	intensity_channel_imp.changes=False;
 	intensity_channel_imp.close();
 	return binary_cells_imp;
+
 
 def merge_incorrect_splits_and_get_centroids(imp, centroid_distance_limit=100, size_limit=100):
 	"""if particles are found with centroids closer than centroid_distance_limit and both have size<size_limit, get average centroid"""
@@ -395,6 +405,7 @@ def merge_incorrect_splits_and_get_centroids(imp, centroid_distance_limit=100, s
 	#imp.close();
 	return out_imp, centroids;
 
+
 def my_kill_borders(threshold_imp):
 	"""handle the tasks required before and after using MorphoLibJ's killBorders"""
 	threshold_imp.killRoi();
@@ -405,6 +416,7 @@ def my_kill_borders(threshold_imp):
 	threshold_imp.close();
 	threshold_imp = WM.getImage("{}-killBorders".format(ti_title));
 	return threshold_imp;
+
 
 def save_qc_image(imp, rois, output_path):
 	"""save rois overlaid on imp to output_path"""
@@ -422,6 +434,7 @@ def save_qc_image(imp, rois, output_path):
 	else:
 		FileSaver(imp).saveAsTiff(output_path);
 	return;
+
 
 def save_output_csv(cell_shape_results, output_folder):
 	"""generate an output csv on completion of each image rather than at the end of the run"""
@@ -459,6 +472,7 @@ def save_output_csv(cell_shape_results, output_folder):
 		f.close();
 	return;
 
+
 def get_nuclei_locations(nuc_imp, cal, distance_threshold_um=10, size_threshold_um2=50):
 	"""get centroids of nuclei. blobs closer than distance_threshold_um and smaller than size_threshold_um2 are merged"""
 	size_limit_pix = size_threshold_um2//(cal.pixelWidth**2);
@@ -476,6 +490,7 @@ def get_nuclei_locations(nuc_imp, cal, distance_threshold_um=10, size_threshold_
 	full_nuclei_imp = generate_cell_masks(ws_seed_imp, pre_watershed_nuc_imp, find_edges=True);
 	return centroids, full_nuclei_imp;
 
+
 def get_no_nuclei_in_cell(roi, nuclei_centroids):
 	"""for a given cell roi and list of nuclei centroids from the image, return how many nuclear centroids lie within the cell"""
 	no_nuclei = 0;
@@ -483,6 +498,7 @@ def get_no_nuclei_in_cell(roi, nuclei_centroids):
 		if roi.contains(int(c[0]), int(c[1])):
 			no_nuclei += 1;
 	return no_nuclei;
+
 
 def get_no_nuclei_fully_enclosed(roi, full_nuclei_imp, overlap_threshold=0.65):
 	"""for a given cell roi and ImagePlus with binary nuclei, return how many nuclei lie ENTIRELY within the cell"""
@@ -528,6 +544,7 @@ def get_no_nuclei_fully_enclosed(roi, full_nuclei_imp, overlap_threshold=0.65):
 	cell_imp.changes = False;
 	cell_imp.close();
 	return no_enclosed_nuclei;
+
 
 def filter_cells_by_relative_nuclear_area(rois, full_nuclei_imp, relative_nuclear_area_threshold=0.75):
 	"""if more than (100*relative_nuclear_area_threshold)% of cell area is made up of nucleus, discard"""
@@ -585,6 +602,7 @@ def perform_manual_qc(imp, rois, important_channel=1):
 	imp.setC(important_channel);
 	return rois;
 
+
 def ecad_analysis(imp, file_name, output_folder, gfp_channel_number=1, dapi_channel_number=3, red_channel_number=2, do_manual_qc=False):
 	"""perform analysis based on marker-driven watershed of junction labelling image"""
 	cal = imp.getCalibration();
@@ -620,6 +638,7 @@ def ecad_analysis(imp, file_name, output_folder, gfp_channel_number=1, dapi_chan
 	imp.close();
 	save_output_csv(out_stats, output_folder);
 	return out_stats;
+
 
 def gfp_analysis(imp, file_name, output_folder, gfp_channel_number=1, dapi_channel_number=3, red_channel_number=2, threshold_method='Otsu', do_manual_qc=False, min_size_pix=1000):
 	"""perform analysis based on gfp intensity thresholding"""
@@ -674,26 +693,32 @@ def gfp_analysis(imp, file_name, output_folder, gfp_channel_number=1, dapi_chann
 		pass;
 	return out_stats;
 
+
 def manual_analysis(imp, file_name, output_folder, gfp_channel_number=1, dapi_channel_number=3, red_channel_number=2, important_channel=1):
 	"""perform analysis based on manually drawn cells"""
 	try:
 		cal = imp.getCalibration();
 		channel_imps = ChannelSplitter.split(imp);
-		gfp_imp = channel_imps[gfp_channel_number-1];
+		intensity_channel_imp = channel_imps[important_channel-1];
 		nuc_imp = channel_imps[dapi_channel_number-1];
 		nuclei_locations, full_nuclei_imp = get_nuclei_locations(nuc_imp, cal, distance_threshold_um=10, size_threshold_um2=100);
 		full_nuclei_imp.hide();
-		rois = perform_manual_qc(imp, [], important_channel=gfp_channel_number);
+		rois = perform_manual_qc(imp, [], important_channel=important_channel);
 		no_nuclei_centroids = [get_no_nuclei_in_cell(roi, nuclei_locations) for roi in rois];
 		no_enclosed_nuclei = [get_no_nuclei_fully_enclosed(roi, full_nuclei_imp) for roi in rois];
 		full_nuclei_imp.changes = False;
 		full_nuclei_imp.close();
 		out_stats = generate_cell_shape_results(rois, 
-											 gfp_imp, 
+											 intensity_channel_imp, 
 											 cal, 
 											 file_name, 
 											 no_nuclei_centroids=no_nuclei_centroids,
 											 no_enclosed_nuclei=no_enclosed_nuclei);
+		if gfp_channel_number is None:
+			for idx, cell_shape_result in enumerate(out_stats):
+				cell_shape_result.cell_gfp_I_mean=0
+				cell_shape_result.cell_gfp_I_sd=0
+				out_stats[idx] = cell_shape_result
 		print("Number of cells identified = {}".format(len(out_stats)));
 		for ch in range(imp.getNChannels()):
 			imp.setC(ch+1);
@@ -767,7 +792,7 @@ def main():
 			IJ.run(imp, "Blue", "");
 			IJ.run(imp, "Enhance Contrast", "saturated=0.35");
 		else:
-			raise NotImplementedError;
+			raise NotImplementedError("Nuclear staining channel doesn't seem to exist!");
 		if red_channel_number is not None:
 			imp.setC(red_channel_number);
 			IJ.run(imp, "Red", "");
@@ -777,8 +802,7 @@ def main():
 			IJ.run(imp, "Green", "");
 			IJ.run(imp, "Enhance Contrast", "saturated=0.35");
 			imp.setC(gfp_channel_number);
-		else:
-			raise NotImplementedError;
+
 		imp.show();
 		imp.setDisplayMode(IJ.COMPOSITE);
 		cal = imp.getCalibration();
@@ -787,12 +811,12 @@ def main():
 		cal.pixelHeight = metadata["y_physical_size"];
 		imp.setCalibration(cal);
 
-		#threshold_cell_area_um2 = 105; # hardcoded for now, value set for consistency with early runs. TODO: allow user to define during setup
 		min_size_pix = minimum_cell_area_um2/(cal.pixelHeight * cal.pixelWidth);
 		if "GFP intensity" in analysis_mode:
 			out_stats = gfp_analysis(imp, f, output_folder, gfp_channel_number=gfp_channel_number, dapi_channel_number=dapi_channel_number, threshold_method=threshold_method, do_manual_qc=do_manual_qc, min_size_pix=min_size_pix);
 		elif analysis_mode=="Manual":
-			out_stats = manual_analysis(imp, f, output_folder, gfp_channel_number=gfp_channel_number, dapi_channel_number=dapi_channel_number, important_channel=gfp_channel_number);
+			important_channel = gfp_channel_number if gfp_channel_number is not None else dapi_channel_number
+			out_stats = manual_analysis(imp, f, output_folder, gfp_channel_number=gfp_channel_number, dapi_channel_number=dapi_channel_number, important_channel=important_channel);
 		elif "E-cadherin watershed" in analysis_mode:
 			#out_stats = ecad_analysis(imp, f, output_folder, gfp_channel_number=gfp_channel_number, dapi_channel_number=dapi_channel_number, do_manual_qc=do_manual_qc);
 			imp.close();
