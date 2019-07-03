@@ -1,6 +1,6 @@
 import csv, json, math, os
 from datetime import datetime
-from ij import IJ, ImagePlus, Prefs
+from ij import IJ, ImagePlus, Menus, Prefs
 from ij import WindowManager as WM
 from ij.io import DirectoryChooser, FileSaver
 from ij.plugin import HyperStackConverter, ZProjector, ChannelSplitter, Thresholder, Duplicator, RGBStackConverter
@@ -10,6 +10,9 @@ from ij.plugin.filter import ParticleAnalyzer
 from ij.gui import WaitForUserDialog, PointRoi, OvalRoi, NonBlockingGenericDialog, GenericDialog, PolygonRoi
 from ij.measure import Measurements
 from ij.process import AutoThresholder
+
+# dependency dictionary
+_dependencies = {"MorphoLibJ": "https://imagej.net/MorphoLibJ#Installation"}
 
 # string definitions
 _um = u'\u00B5m';
@@ -707,7 +710,18 @@ def manual_analysis(imp, file_name, output_folder, gfp_channel_number=1, dapi_ch
 		out_stats = [];
 	return out_stats;
 
+
+def check_dependencies():
+	installed_plugins = os.listdir(Menus.getPlugInsPath())
+	for dependency, site in _dependencies.iteritems():
+		if not any(dependency in x for x in installed_plugins):
+			msg = GenericDialog("Missing dependency")
+			msg.addMessage("Missing dependency {}, \n go to {} for installation instructions. ".format(dependency, site))
+			msg.showDialog()
+			raise RuntimeError("Missing dependency {}, \n go to {} for installation instructions. ".format(dependency, site))
+
 def main():
+	check_dependencies()
 	# setup
 	Prefs.blackBackground = True;
 	params = Parameters();
