@@ -331,12 +331,14 @@ def generate_cell_shape_results(rois, intensity_channel_imp, cal, file_name, no_
 
 def generate_cell_masks(watershed_seeds_imp, intensity_channel_imp, find_edges=False):
 	"""perform marker-driven watershed on image in intensity_channel_imp"""
-	title = os.path.splitext(intensity_channel_imp.getTitle())[0];
+	intensity_channel_title = intensity_channel_imp.getTitle()
+	watershed_seed_title = watershed_seeds_imp.getTitle()
+	title = os.path.splitext(intensity_channel_title)[0]
 	intensity_channel_imp.show();
 	watershed_seeds_imp.show();
 	if find_edges:
 		IJ.run(intensity_channel_imp, "Find Edges", "");
-	IJ.run(intensity_channel_imp, "Marker-controlled Watershed", "input={} marker=Nuclei mask=None binary calculate use".format(title));
+	IJ.run(intensity_channel_imp, "Marker-controlled Watershed", "input={} marker={} mask=None binary calculate use".format(intensity_channel_title, watershed_seed_title))
 	ws_title =  "{}-watershed.tif".format(title);
 	watershed_imp = WM.getImage(ws_title);
 	IJ.setRawThreshold(watershed_imp, 1, watershed_imp.getProcessor().maxValue(), "Red");	
@@ -357,7 +359,7 @@ def merge_incorrect_splits_and_get_centroids(imp, centroid_distance_limit=100, s
 	"""if particles are found with centroids closer than centroid_distance_limit and both have size<size_limit, get average centroid"""
 	imp.killRoi();
 	rt = ResultsTable();
-	out_imp = IJ.createImage("Nuclei centroids from {}".format(imp.getTitle()), imp.getWidth(), imp.getHeight(), 1, 8);
+	out_imp = IJ.createImage("Nuclei_centroids_from_{}".format(imp.getTitle()), imp.getWidth(), imp.getHeight(), 1, 8);
 	IJ.run(out_imp, "Select All", "");
 	IJ.run(out_imp, "Set...", "value=0 slice");
 	cal = imp.getCalibration();
