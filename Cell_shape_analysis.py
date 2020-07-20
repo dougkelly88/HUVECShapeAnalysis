@@ -35,6 +35,7 @@ class Parameters(object):
 						"Manual"]
 
 	def __init__(self, last_input_path=None, last_output_path=None, last_analysis_mode=None, last_threshold_method='Otsu', last_minimum_cell_area_um2=105):
+		print("version {}".format(self._version_string))
 		self.last_input_path = last_input_path
 		self.last_output_path = last_output_path
 		self.last_analysis_mode = last_analysis_mode if last_analysis_mode is not None else self.list_analysis_modes()[0]
