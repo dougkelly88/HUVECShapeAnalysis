@@ -7,7 +7,7 @@ from ij.plugin import HyperStackConverter, ZProjector, ChannelSplitter, Threshol
 from ij.plugin.frame import RoiManager
 from ij.measure import ResultsTable
 from ij.plugin.filter import ParticleAnalyzer
-from ij.gui import WaitForUserDialog, PointRoi, OvalRoi, NonBlockingGenericDialog, GenericDialog, PolygonRoi
+from ij.gui import WaitForUserDialog, PointRoi, OvalRoi, NonBlockingGenericDialog, GenericDialog, PolygonRoi, DialogListener
 from ij.measure import Measurements
 from ij.process import AutoThresholder
 
@@ -165,14 +165,29 @@ class CellShapeResults(object):
 		"""calculate cell spikiness index, i.e. deviation from circular cell"""
 		return (cell_perimeter_um**2 / (4 * math.pi * cell_area_um2))
 
+class AnalysisModeListener(DialogListener):
+	"""
+	prevent selection of unimplemented methods
+	"""
+	def dialogItemChanged(self, generic_dialog, event):
+		if event is not None:
+			if "e-cad" in event.item.lower():
+				generic_dialog.getChoices()[0].select(0)
+				generic_dialog.getMessage().text = "E-cadherin methods not yet implemented"
+			else:
+				generic_dialog.getMessage().text = ""
+		return True
 
 def choose_analysis_mode(params):
 	"""present UI for choosing how cells should be identified"""
 	dialog = GenericDialog("Analysis methods")
 	dialog.addMessage("Please choose how cell shape anlaysis should proceed:")
 	dialog.addChoice("Analysis mode: ", params.list_analysis_modes(), params.last_analysis_mode)
+	dialog.addMessage("")
 	dialog.addChoice("GFP segmentation method: ", AutoThresholder.getMethods(), params.last_threshold_method)
 	dialog.addNumericField("Minimum cell area (um" + _squared + "): ", params.last_minimum_cell_area_um2, 0)
+	dl = AnalysisModeListener()
+	dialog.addDialogListener(dl)
 	dialog.showDialog()
 	if dialog.wasCanceled():
 		print("Run canceled")
