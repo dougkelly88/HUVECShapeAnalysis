@@ -633,10 +633,14 @@ def ecad_analysis(imp, file_name, output_folder, gfp_channel_number=1, dapi_chan
 	"""perform analysis based on marker-driven watershed of junction labelling image"""
 	cal = imp.getCalibration()
 	channel_imps = ChannelSplitter.split(imp)
-	gfp_imp = channel_imps[gfp_channel_number-1]
-	gfp_imp.setTitle("GFP")
 	ecad_imp = channel_imps[red_channel_number-1]
 	ecad_imp.setTitle("E-cadherin")
+	if gfp_channel_number is not None:
+		gfp_imp = channel_imps[gfp_channel_number-1]
+		gfp_imp.setTitle("GFP")
+	else:
+		gfp_imp = Duplicator().run(ecad_imp)
+		gfp_imp.setTitle("GFP")
 	threshold_imp = Duplicator().run(ecad_imp)
 	threshold_imp.setTitle("Ecad_threshold_imp")
 	nuc_imp = channel_imps[dapi_channel_number-1]
@@ -649,7 +653,9 @@ def ecad_analysis(imp, file_name, output_folder, gfp_channel_number=1, dapi_chan
 	binary_cells_imp.changes = False
 	binary_cells_imp.close()
 	if do_manual_qc:
-		manual_qc_rois = perform_manual_qc(imp, rois, important_channel=gfp_channel_number)
+		print("gfp_channel_number= {}".format(gfp_channel_number))
+		print("red_channel_number = {}".format(red_channel_number))
+		manual_qc_rois = perform_manual_qc(imp, rois, important_channel=red_channel_number)
 		if manual_qc_rois is not None:
 			rois = manual_qc_rois
 	no_nuclei_centroids = [get_no_nuclei_in_cell(roi, nuclei_locations) for roi in rois]
@@ -662,6 +668,11 @@ def ecad_analysis(imp, file_name, output_folder, gfp_channel_number=1, dapi_chan
 										 file_name, 
 										 no_nuclei_centroids=no_nuclei_centroids,
 										 no_enclosed_nuclei=no_enclosed_nuclei)
+	if gfp_channel_number is None:
+		for idx, cell_shape_result in enumerate(out_stats):
+			cell_shape_result.cell_gfp_I_mean=0
+			cell_shape_result.cell_gfp_I_sd=0
+			out_stats[idx] = cell_shape_result
 	print("Number of cells identified = {}".format(len(out_stats)))
 	# save output
 	save_qc_image(imp, rois, "{}_plus_overlay.tiff".format(os.path.join(output_folder, os.path.splitext(file_name)[0])))
@@ -859,7 +870,7 @@ def main():
 			important_channel = gfp_channel_number if gfp_channel_number is not None else dapi_channel_number
 			out_stats = manual_analysis(imp, f, output_folder, gfp_channel_number=gfp_channel_number, dapi_channel_number=dapi_channel_number, important_channel=important_channel)
 		elif "E-cadherin watershed" in analysis_mode:
-			out_stats = ecad_analysis(imp, f, output_folder, gfp_channel_number=gfp_channel_number, dapi_channel_number=dapi_channel_number, do_manual_qc=do_manual_qc)
+			out_stats = ecad_analysis(imp, f, output_folder, gfp_channel_number=gfp_channel_number, red_channel_number=red_channel_number, dapi_channel_number=dapi_channel_number, do_manual_qc=do_manual_qc)
 			imp.close()
 		out_statses.extend(out_stats)
 		print("Current total number of cells identified: {}".format(len(out_statses)))
