@@ -175,7 +175,8 @@ def choose_analysis_mode(params):
 	dialog.addNumericField("Minimum cell area (um" + _squared + "): ", params.last_minimum_cell_area_um2, 0)
 	dialog.showDialog()
 	if dialog.wasCanceled():
-		raise KeyboardInterrupt("Run canceled")
+		print("Run canceled")
+		return None, None, None
 	return dialog.getNextChoice(), dialog.getNextChoice(), dialog.getNextNumber()	
 
 
@@ -190,8 +191,9 @@ def MyWaitForUser(title, message):
 		dialog.addMessage(message)
 	dialog.showDialog()
 	if dialog.wasCanceled():
-		raise KeyboardInterrupt("Run canceled")
-	return
+		print("Run canceled")
+		return None
+	return True
 
 
 def import_iq3_metadata(metadata_path):
@@ -574,6 +576,7 @@ def perform_manual_qc(imp, rois, important_channel=1):
 	roim.runCommand("Show all with labels")
 	for roi in rois:
 		roim.addRoi(roi)
+	auto_rois_only = rois
 	while not proceed:
 		dialog = NonBlockingGenericDialog("Perform manual segmentation")
 		dialog.setOKLabel("Proceed to next image...")
@@ -583,7 +586,8 @@ def perform_manual_qc(imp, rois, important_channel=1):
 		dialog.addMessage("Then press \"proceed to next image\" when all cells have been added. ")
 		dialog.showDialog()
 		if dialog.wasCanceled():
-			raise KeyboardInterrupt("Run canceled")
+			print("Manual segmentation canceled")
+			return auto_rois_only
 		elif dialog.wasOKed():
 			if roim.getCount()==0:
 				rois = []
@@ -622,7 +626,9 @@ def ecad_analysis(imp, file_name, output_folder, gfp_channel_number=1, dapi_chan
 	binary_cells_imp = generate_cell_masks(ws_seed_imp, ecad_imp, find_edges=False)
 	rois = generate_cell_rois(binary_cells_imp)
 	if do_manual_qc:
-		rois = perform_manual_qc(imp, rois, important_channel=gfp_channel_number)
+		manual_qc_rois = perform_manual_qc(imp, rois, important_channel=gfp_channel_number)
+		if manual_qc_rois is not None:
+			rois = manual_qc_rois
 	no_nuclei_centroids = [get_no_nuclei_in_cell(roi, nuclei_locations) for roi in rois]
 	no_enclosed_nuclei = [get_no_nuclei_fully_enclosed(roi, full_nuclei_imp) for roi in rois]
 	full_nuclei_imp.changes = False
@@ -761,16 +767,23 @@ def main():
 	input_folder = dc.getDirectory()
 	params.last_input_path = input_folder
 	if input_folder is None:
-		raise KeyboardInterrupt("Run canceled")
+		print("Run canceled")
+		return
 	if params.last_output_path is not None:
 		DirectoryChooser.setDefaultDirectory(os.path.dirname(params.last_output_path))
 	dc = DirectoryChooser("choose location to save output")
 	output_folder = dc.getDirectory()
+	if output_folder is None:
+		print("Run canceled")
+		return
 	timestamp = datetime.strftime(datetime.now(), '%Y-%m-%d %H-%M-%S')
 	output_folder = os.path.join(output_folder, (timestamp + ' output'))
 	params.last_output_path = output_folder
 	os.mkdir(output_folder)
 	analysis_mode, threshold_method, minimum_cell_area_um2 = choose_analysis_mode(params)
+	if analysis_mode is None:
+		print("Run canceled")
+		return
 	params.last_analysis_mode = analysis_mode
 	do_manual_qc = "+ manual correction" in analysis_mode
 	params.last_threshold_method = threshold_method
