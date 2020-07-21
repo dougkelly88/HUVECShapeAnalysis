@@ -186,8 +186,8 @@ def choose_analysis_mode(params):
 	dialog.addMessage("")
 	dialog.addChoice("GFP segmentation method: ", AutoThresholder.getMethods(), params.last_threshold_method)
 	dialog.addNumericField("Minimum cell area (um" + _squared + "): ", params.last_minimum_cell_area_um2, 0)
-	dl = AnalysisModeListener()
-	dialog.addDialogListener(dl)
+	# dl = AnalysisModeListener()
+	# dialog.addDialogListener(dl)
 	dialog.showDialog()
 	if dialog.wasCanceled():
 		print("Run canceled")
@@ -359,15 +359,19 @@ def generate_cell_masks(watershed_seeds_imp, intensity_channel_imp, find_edges=F
 	IJ.run(intensity_channel_imp, "Marker-controlled Watershed", "input={} marker={} mask=None binary calculate use".format(intensity_channel_title, watershed_seed_title))
 	ws_title =  "{}-watershed.tif".format(title)
 	watershed_imp = WM.getImage(ws_title)
-	IJ.setRawThreshold(watershed_imp, 1, watershed_imp.getProcessor().maxValue(), "Red")	
+	if watershed_imp is None:
+		if ws_title[-3:] == 'tif':
+			ws_title = os.path.splitext(ws_title)[0]
+		else:
+			ws_title = ws_title + '.tif'
+		watershed_imp = WM.getImage(ws_title)
+	IJ.setRawThreshold(watershed_imp, 1, watershed_imp.getProcessor().maxValue() + 1, "Red")	
 	binary_cells_imp = ImagePlus("thresholded", watershed_imp.createThresholdMask())
 	IJ.run(binary_cells_imp, "Kill Borders", "")
 	kb_thresh_title = binary_cells_imp.getTitle()
 	binary_cells_imp.close()
 	binary_cells_imp = WM.getImage("{}-killBorders".format(kb_thresh_title))
 	watershed_imp.close()
-	watershed_seeds_imp.changes = False
-	watershed_seeds_imp.close()
 	intensity_channel_imp.changes=False
 	intensity_channel_imp.close()
 	return binary_cells_imp
@@ -507,8 +511,8 @@ def get_nuclei_locations(nuc_imp, cal, distance_threshold_um=10, size_threshold_
 	pre_watershed_nuc_imp = Duplicator().run(nuc_imp)
 	IJ.run(nuc_imp, "Watershed", "")
 	ws_seed_imp, centroids = merge_incorrect_splits_and_get_centroids(nuc_imp, centroid_distance_limit=distance_limit_pix, size_limit=size_limit_pix)
-	full_nuclei_imp = generate_cell_masks(ws_seed_imp, pre_watershed_nuc_imp, find_edges=True)
-	return centroids, full_nuclei_imp
+	full_nuclei_imp = generate_cell_masks(ws_seed_imp, pre_watershed_nuc_imp, find_edges=False)
+	return centroids, full_nuclei_imp, ws_seed_imp
 
 
 def get_no_nuclei_in_cell(roi, nuclei_centroids):
@@ -638,8 +642,12 @@ def ecad_analysis(imp, file_name, output_folder, gfp_channel_number=1, dapi_chan
 	nuc_imp = channel_imps[dapi_channel_number-1]
 	nuclei_locations, full_nuclei_imp, ws_seed_imp = get_nuclei_locations(nuc_imp, cal, distance_threshold_um=10, size_threshold_um2=100)
 	full_nuclei_imp.hide()
-	binary_cells_imp = generate_cell_masks(ws_seed_imp, ecad_imp, find_edges=False)
+	binary_cells_imp = generate_cell_masks(ws_seed_imp, ecad_imp, find_edges=True)
+	ws_seed_imp.changes = False
+	ws_seed_imp.close()
 	rois = generate_cell_rois(binary_cells_imp)
+	binary_cells_imp.changes = False
+	binary_cells_imp.close()
 	if do_manual_qc:
 		manual_qc_rois = perform_manual_qc(imp, rois, important_channel=gfp_channel_number)
 		if manual_qc_rois is not None:
@@ -676,7 +684,9 @@ def gfp_analysis(imp, file_name, output_folder, gfp_channel_number=1, dapi_chann
 		ecad_imp = channel_imps[red_channel_number-1]
 		ecad_imp.setTitle("E-cadherin")
 		nuc_imp = channel_imps[dapi_channel_number-1]
-		nuclei_locations, full_nuclei_imp = get_nuclei_locations(nuc_imp, cal, distance_threshold_um=10, size_threshold_um2=100)
+		nuclei_locations, full_nuclei_imp, ws_seeds_imp = get_nuclei_locations(nuc_imp, cal, distance_threshold_um=10, size_threshold_um2=100)
+		ws_seeds_imp.changes = False
+		ws_seeds_imp.close()
 		full_nuclei_imp.hide()
 		IJ.run(threshold_imp, "Make Binary", "method={} background=Dark calculate".format(threshold_method))
 		IJ.run(threshold_imp, "Fill Holes", "")
@@ -725,7 +735,7 @@ def manual_analysis(imp, file_name, output_folder, gfp_channel_number=1, dapi_ch
 		channel_imps = ChannelSplitter.split(imp)
 		intensity_channel_imp = channel_imps[important_channel-1]
 		nuc_imp = channel_imps[dapi_channel_number-1]
-		nuclei_locations, full_nuclei_imp = get_nuclei_locations(nuc_imp, cal, distance_threshold_um=10, size_threshold_um2=100)
+		nuclei_locations, full_nuclei_imp, _ = get_nuclei_locations(nuc_imp, cal, distance_threshold_um=10, size_threshold_um2=100)
 		full_nuclei_imp.hide()
 		rois = perform_manual_qc(imp, [], important_channel=important_channel)
 		no_nuclei_centroids = [get_no_nuclei_in_cell(roi, nuclei_locations) for roi in rois]
@@ -849,10 +859,8 @@ def main():
 			important_channel = gfp_channel_number if gfp_channel_number is not None else dapi_channel_number
 			out_stats = manual_analysis(imp, f, output_folder, gfp_channel_number=gfp_channel_number, dapi_channel_number=dapi_channel_number, important_channel=important_channel)
 		elif "E-cadherin watershed" in analysis_mode:
-			#out_stats = ecad_analysis(imp, f, output_folder, gfp_channel_number=gfp_channel_number, dapi_channel_number=dapi_channel_number, do_manual_qc=do_manual_qc)
+			out_stats = ecad_analysis(imp, f, output_folder, gfp_channel_number=gfp_channel_number, dapi_channel_number=dapi_channel_number, do_manual_qc=do_manual_qc)
 			imp.close()
-			IJ.showMessage("E-cadherin channel thresholding implementation not yet finished!")
-			raise NotImplementedError
 		out_statses.extend(out_stats)
 		print("Current total number of cells identified: {}".format(len(out_statses)))
 		# get # nuclei per "cell"
