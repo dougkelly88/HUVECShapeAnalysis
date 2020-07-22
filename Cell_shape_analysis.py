@@ -30,8 +30,8 @@ class Parameters(object):
 
 	_analysis_modes = ["GFP intensity", 
 						"GFP intensity + manual correction", 
-						"E-cadherin watershed", 
-						"E-cadherin watershed + manual correction", 
+						# "E-cadherin watershed", 
+						# "E-cadherin watershed + manual correction", 
 						"Manual"]
 
 	def __init__(self, last_input_path=None, last_output_path=None, last_analysis_mode=None, last_threshold_method='Otsu', last_minimum_cell_area_um2=105):
